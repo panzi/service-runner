@@ -10,7 +10,8 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <spawn.h>
+#include <sys/syscall.h>
+#include <sys/wait.h>
 #include <signal.h>
 #include <getopt.h>
 #include <limits.h>
@@ -22,31 +23,100 @@
 #include <signal.h>
 #include <assert.h>
 #include <poll.h>
+#include <spawn.h>
+
+#define pidfd_open(pid, flags) \
+    syscall(SYS_pidfd_open, (pid), (flags))
+
+#define pidfd_send_signal(pidfd, sig, info, flags) \
+    syscall(SYS_pidfd_send_signal, (pidfd), (sig), (info), (flags))
+
+#ifndef P_PIDFD
+    #define P_PIDFD 3
+#endif
+
+#define PIPE_READ  0
+#define PIPE_WRITE 1
+#define SPLICE_SZIE ((size_t)2 * 1024 * 1024 * 1024)
 
 extern char **environ;
 
-void usage(int argc, char *argv[]) {
-    const char *progname = argc > 0 ? argv[0] : "service_runner";
-    printf("Usage: %s start  <name> [options] [--] <command> [argument...]\n", progname);
-    printf("       %s stop   <name> [options]\n", progname);
-    printf("       %s status <name> [options]\n", progname);
-    printf("       %s help\n", progname);
-    printf(
-        "\n"
-        "OPTIONS:\n"
+#define HELP_OPT_PIDFILE \
         "       --pidfile=FILE, -p FILE         Use FILE as the pidfile. default: /var/run/NAME.pid\n"
-        "       --logfile=FILE, -l FILE         Write service output to FILE. default: /var/log/NAME-%%Y-%%m-%%d.log\n"
-        "       --user=USER, -u USER            Run service as USER (name or UID).\n"
-        "       --group=GROUP, -g GROUP         Run service as GROUP (name or GID).\n"
-        "       --crash-sleep=SECONDS           Wait SECONDS before restarting service. default: 1\n"
-        "       --crash-report=COMMAND          Run `COMMAND $EXIT_STATUS $LOGFILE` if the service exited with a non-zero exit status.\n"
-        "       --shutdown-timeout=SECONDS      If the service doesn't shut down after SECONDS after sending SIGTERM send SIGKILL. 0 means don't ever send SIGKILL. default: 0\n"
-    );
+
+#define HELP_CMD_START                                                                                                          \
+        "   %s start <name> [options] [--] <command> [argument...]\n"                                                           \
+        "\n"                                                                                                                    \
+        "       Start <command> as service <name>. Does nothing if the service is already running.\n"                           \
+        "       This automatically deamonizes, handles PID- and log-files, and restarts on crash.\n"                            \
+        "\n"                                                                                                                    \
+        "   OPTIONS:\n"                                                                                                         \
+        HELP_OPT_PIDFILE                                                                                                        \
+        "       --logfile=FILE, -l FILE         Write service output to FILE. default: /var/log/NAME-%%Y-%%m-%%d.log\n"         \
+        "                                       This implements log-rotating based on the file name pattern.\n"                 \
+        "                                       See `man strftime` for a description of the pattern language.\n"                \
+        "       --user=USER, -u USER            Run service as USER (name or UID).\n"                                           \
+        "       --group=GROUP, -g GROUP         Run service as GROUP (name or GID).\n"                                          \
+        "       --crash-sleep=SECONDS           Wait SECONDS before restarting service. default: 1\n"                           \
+        "       --crash-report=COMMAND          Run `COMMAND SI_CODE SI_STATUS LOGFILE` if the service crashed.\n"              \
+        "                                       SI_CODE values:\n"                                                              \
+        "                                         EXITED ... service has exited, SI_STATUS is it's exit status\n"               \
+        "                                         KILLED ... service was killed, SI_STATUS is the killing signal\n"             \
+        "                                         DUMPED ... service produced a core dump, SI_STATUS is the killing signal\n"
+
+#define HELP_CMD_STOP                                                                                                                   \
+        "   %s stop <name> [options]\n"                                                                                                 \
+        "\n"                                                                                                                            \
+        "       Stop service <name>. If --pidfile was passed to the corresponding start command it must be passed with\n"               \
+        "       the same argument here again.\n"                                                                                        \
+        "\n"                                                                                                                            \
+        "   OPTIONS:\n"                                                                                                                 \
+        HELP_OPT_PIDFILE                                                                                                                \
+        "       --shutdown-timeout=SECONDS      If the service doesn't shut down after SECONDS after sending SIGTERM send SIGKILL.\n"   \
+        "                                       0 means no timeout, just wait forever. default: 0\n"
+
+#define HELP_CMD_STATUS                                                 \
+        "   %s status <name> [options]\n"                               \
+        "\n"                                                            \
+        "       Print some status information about service <name>.\n"  \
+        "\n"                                                            \
+        "   OPTIONS:\n"                                                 \
+        HELP_OPT_PIDFILE
+
+#define HELP_CMD_HELP               \
+        "   %s help [command]\n"    \
+        "\n"                        \
+        "       Print help message to <command>. If no command is passed, prints help message to all commands.\n"
+
+const char *get_progname(int argc, char *argv[]) {
+    return argc > 0 ? argv[0] : "service_runner";
 }
 
 void short_usage(int argc, char *argv[]) {
-    const char *progname = argc > 0 ? argv[0] : "service_runner";
-    fprintf(stderr, "for more info: %s help\n", progname);
+    const char *progname = get_progname(argc, argv);
+    printf("\n");
+    printf("Usage: %s start  <name> [options] [--] <command> [argument...]\n", progname);
+    printf("       %s stop   <name> [options]\n", progname);
+    printf("       %s status <name> [options]\n", progname);
+    printf("       %s help [command]\n", progname);
+}
+
+void usage(int argc, char *argv[]) {
+    short_usage(argc, argv);
+    const char *progname = get_progname(argc, argv);
+    printf(
+        "\n"
+        "COMMANDS:\n"
+        "\n"
+    );
+    printf(HELP_CMD_START  "\n", progname);
+    printf(HELP_CMD_STOP   "\n", progname);
+    printf(HELP_CMD_STATUS "\n", progname);
+    printf(HELP_CMD_HELP   "\n", progname);
+    printf(
+        "(c) 2022 Mathias Panzenböck\n"
+        "GitHub: https://github.com/panzi/service-runner\n"
+    );
 }
 
 int write_pidfile(const char *pidfile, pid_t pid) {
@@ -85,14 +155,24 @@ int read_pidfile(const char *pidfile, pid_t *pidptr) {
 }
 
 enum {
-    OPT_PIDFILE,
-    OPT_LOGFILE,
-    OPT_USER,
-    OPT_GROUP,
-    OPT_CRASH_REPORT,
-    OPT_CRASH_SLEEP,
-    OPT_SHUTDOWN_TIMEOUT,
-    OPT_COUNT,
+    OPT_START_PIDFILE,
+    OPT_START_LOGFILE,
+    OPT_START_USER,
+    OPT_START_GROUP,
+    OPT_START_CRASH_REPORT,
+    OPT_START_CRASH_SLEEP,
+    OPT_START_COUNT,
+};
+
+enum {
+    OPT_STOP_PIDFILE,
+    OPT_STOP_SHUTDOWN_TIMEOUT,
+    OPT_STOP_COUNT,
+};
+
+enum {
+    OPT_STATUS_PIDFILE,
+    OPT_STATUS_COUNT,
 };
 
 bool is_valid_name(const char *name) {
@@ -114,15 +194,6 @@ bool is_valid_name(const char *name) {
     }
 
     return true;
-}
-
-bool is_time_format_ok(const char *format) {
-    // TODO: some formats have variable length (month names, day names)
-    char buf[BUFSIZ];
-    time_t ts = time(NULL);
-    struct tm localts;
-    localtime_r(&ts, &localts);
-    return strftime(buf, sizeof(buf), format, &localts) != 0;
 }
 
 bool can_execute(const char *filename, uid_t uid, gid_t gid) {
@@ -154,7 +225,7 @@ bool can_read_write(const char *filename, uid_t uid, gid_t gid) {
         if (errno == ENOENT) {
             char *namedup = strdup(filename);
             if (namedup == NULL) {
-                perror("strdup");
+                fprintf(stderr, "*** error: strdup(\"%s\"): %s\n", filename, strerror(errno));
                 return false;
             }
 
@@ -229,7 +300,7 @@ int get_uid_from_name(const char *username, uid_t *uidptr) {
 
     char *buf = malloc(bufsize);
     if (buf == NULL) {
-        perror("malloc");
+        fprintf(stderr, "*** error: malloc(%zu): %s\n", bufsize, strerror(errno));
         return -1;
     }
 
@@ -290,7 +361,7 @@ int get_gid_from_name(const char *groupname, gid_t *gidptr) {
 
     char *buf = malloc(bufsize);
     if (buf == NULL) {
-        perror("malloc");
+        fprintf(stderr, "*** error: malloc(%zu): %s\n", bufsize, strerror(errno));
         return -1;
     }
 
@@ -336,28 +407,35 @@ int get_gid_from_name(const char *groupname, gid_t *gidptr) {
 }
 
 const struct option start_options[] = {
-    [OPT_PIDFILE]          = { "pidfile", required_argument, 0, 'p' },
-    [OPT_LOGFILE]          = { "logfile", required_argument, 0, 'l' },
-    [OPT_USER]             = { "user",    required_argument, 0, 'u' },
-    [OPT_GROUP]            = { "group",   required_argument, 0, 'g' },
-    [OPT_CRASH_REPORT]     = { "crash-report",     required_argument, 0, 0 },
-    [OPT_CRASH_SLEEP]      = { "crash-sleep",      required_argument, 0, 0 },
-    [OPT_SHUTDOWN_TIMEOUT] = { "shutdown-timeout", required_argument, 0, 0 },
-    [OPT_COUNT]            = { 0, 0, 0, 0 },
+    [OPT_START_PIDFILE]      = { "pidfile",      required_argument, 0, 'p' },
+    [OPT_START_LOGFILE]      = { "logfile",      required_argument, 0, 'l' },
+    [OPT_START_USER]         = { "user",         required_argument, 0, 'u' },
+    [OPT_START_GROUP]        = { "group",        required_argument, 0, 'g' },
+    [OPT_START_CRASH_REPORT] = { "crash-report", required_argument, 0,  0  },
+    [OPT_START_CRASH_SLEEP]  = { "crash-sleep",  required_argument, 0,  0  },
+    [OPT_START_COUNT]        = { 0, 0, 0, 0 },
 };
 
 pid_t service_pid = 0;
+int service_pidfd = -1;
+volatile bool running = false;
 
 void forward_signal(int sig) {
-    if (service_pid != 0) {
-        if (kill(service_pid, sig) != 0) {
-            fprintf(stderr, "*** error: forwarding signal %d to PID %d: %s\n", sig, service_pid, strerror(errno));
+    running = false;
+
+    if (service_pidfd != -1 && pidfd_send_signal(service_pidfd, sig, NULL, 0) != 0) {
+        if (errno == EBADFD || errno == ENOSYS) {
+            if (service_pid != 0 && kill(service_pid, sig) != 0) {
+                fprintf(stderr, "*** error: forwarding signal %d to PID %d: %s\n", sig, service_pid, strerror(errno));
+            }
+        } else {
+            fprintf(stderr, "*** error: forwarding signal %d to PID %d via pidfd: %s\n", sig, service_pid, strerror(errno));
         }
     }
 }
 
 int command_start(int argc, char *argv[]) {
-    if (argc < 1) {
+    if (argc < 2) {
         return 1;
     }
 
@@ -369,8 +447,7 @@ int command_start(int argc, char *argv[]) {
     const char *group   = NULL;
 
     const char *crash_report = NULL;
-    unsigned int crash_sleep      = 1;
-    unsigned int shutdown_timeout = 0;
+    unsigned int crash_sleep = 1;
 
     for (;;) {
         int opt = getopt_long(argc - 1, argv + 1, "p:l:u:g:", start_options, &longind);
@@ -382,11 +459,11 @@ int command_start(int argc, char *argv[]) {
         switch (opt) {
             case 0:
                 switch (longind) {
-                    case OPT_CRASH_REPORT:
+                    case OPT_START_CRASH_REPORT:
                         crash_report = optarg;
                         break;
 
-                    case OPT_CRASH_SLEEP:
+                    case OPT_START_CRASH_SLEEP:
                     {
                         char *endptr = NULL;
                         unsigned long value = strtoul(optarg, &endptr, 10);
@@ -395,18 +472,6 @@ int command_start(int argc, char *argv[]) {
                             return 1;
                         }
                         crash_sleep = value;
-                        break;
-                    }
-
-                    case OPT_SHUTDOWN_TIMEOUT:
-                    {
-                        char *endptr = NULL;
-                        unsigned long value = strtoul(optarg, &endptr, 10);
-                        if (!*optarg || *endptr || value > UINT_MAX) {
-                            fprintf(stderr, "*** error: illegal value for --shutdown-timeout: %s\n", optarg);
-                            return 1;
-                        }
-                        shutdown_timeout = value;
                         break;
                     }
                 }
@@ -489,6 +554,11 @@ int command_start(int argc, char *argv[]) {
     bool auto_pidfile = false;
     bool auto_logfile = false;
     char *pidfile_runner = NULL;
+    char logfile_path[BUFSIZ];
+    char new_logfile_path[BUFSIZ];
+    int logfile_fd = -1;
+    bool cleanup_pidfiles = false;
+
 
     if (pidfile == NULL) {
         auto_pidfile = true;
@@ -496,7 +566,7 @@ int command_start(int argc, char *argv[]) {
         size_t bufsize = strlen("/var/run/.pid") + strlen(name) + 1;
         char *buf = malloc(bufsize);
         if (buf == NULL) {
-            perror("malloc");
+            fprintf(stderr, "*** error: malloc(%zu): %s\n", bufsize, strerror(errno));
             status = 1;
             goto cleanup;
         }
@@ -517,7 +587,7 @@ int command_start(int argc, char *argv[]) {
         size_t bufsize = strlen("/var/log/-%Y-%m-%d.log") + strlen(name) + 1;
         char *buf = malloc(bufsize);
         if (buf == NULL) {
-            perror("malloc");
+            fprintf(stderr, "*** error: malloc(%zu): %s\n", bufsize, strerror(errno));
             status = 1;
             goto cleanup;
         }
@@ -550,62 +620,152 @@ int command_start(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    if (!can_read_write(logfile, selfuid, selfgid)) {
-        fprintf(stderr, "*** error: cannot read and write file: %s\n", logfile);
-        status = 1;
-        goto cleanup;
+    {
+        // checking for existing process and trying to deal with it
+        pid_t runner_pid = 0;
+        if (read_pidfile(pidfile_runner, &runner_pid) == 0) {
+            if (kill(runner_pid, 0) == 0) {
+                printf("%s is already running\n", name);
+                goto cleanup;
+            } else {
+                fprintf(stderr, "*** error: %s exists, but PID %d doesn't exist.\n", pidfile_runner, runner_pid);
+                pid_t other_pid = 0;
+                if (read_pidfile(pidfile, &other_pid) == 0) {
+                    if (kill(other_pid, 0) != 0) {
+                        fprintf(stderr, "*** error: Service is running (PID: %d), but it's service-runner is not!\n", other_pid);
+                        fprintf(stderr, "           You probably will want to kill that process?\n");
+                        status = 1;
+                        goto cleanup;
+                    }
+
+                    if (unlink(pidfile) != 0 && errno != ENOENT) {
+                        fprintf(stderr, "*** error: unlink(\"%s\"): %s\n", pidfile, strerror(errno));
+                    }
+                }
+
+                if (unlink(pidfile_runner) != 0 && errno != ENOENT) {
+                    fprintf(stderr, "*** error: unlink(\"%s\"): %s\n", pidfile_runner, strerror(errno));
+                }
+            }
+        }
     }
 
-    if (!is_time_format_ok(logfile)) {
-        fprintf(stderr, "*** error: illegal logfile name: %s\n", logfile);
-        status = 1;
-        goto cleanup;
-    }
+    const bool logfile_has_format = strchr(logfile, '%') != NULL;
 
-    // TODO: check for existing pidfiles!!
+    if (logfile_has_format) {
+        time_t now = time(NULL);
+        struct tm local_now;
+        if (localtime_r(&now, &local_now) == NULL) {
+            fprintf(stderr, "*** error: getting local time: %s\n", strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
+
+        if (strftime(logfile_path, sizeof(logfile_path), logfile, &local_now) == 0) {
+            fprintf(stderr, "*** error: cannot format logfile \"%s\": %s\n", logfile, strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
+
+        if (!can_read_write(logfile_path, selfuid, selfgid)) {
+            fprintf(stderr, "*** error: cannot read and write file: %s\n", logfile);
+            status = 1;
+            goto cleanup;
+        }
+
+        logfile_fd = open(logfile_path, O_CREAT | O_WRONLY | O_CLOEXEC, 0644);
+        if (logfile_fd == -1) {
+            fprintf(stderr, "*** error: cannot open logfile: %s: %s\n", logfile_path, strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
+    } else {
+        logfile_fd = open(logfile, O_CREAT | O_WRONLY | O_CLOEXEC, 0644);
+        if (logfile_fd == -1) {
+            fprintf(stderr, "*** error: cannot open logfile: %s: %s\n", logfile, strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
+    }
 
     pid_t pid = fork();
     if (pid < 0) {
-        fprintf(stderr, "*** error: fork failed: %s\n", strerror(errno));
+        fprintf(stderr, "*** error: fork for deamonize failed: %s\n", strerror(errno));
         status = 1;
+        goto cleanup;
+    } else if (pid != 0) {
+        // parent
         goto cleanup;
     }
 
-    sigset_t nohup;
-    sigemptyset(&nohup);
-    sigaddset(&nohup, SIGHUP);
-    int result = sigprocmask(SIG_BLOCK, &nohup, NULL);
-    assert(result == 0); (void)result;
+    // child
+    {
+        // setup signal handling
+        sigset_t nohup;
+        sigemptyset(&nohup);
+        sigaddset(&nohup, SIGHUP);
+        int result = sigprocmask(SIG_BLOCK, &nohup, NULL);
+        assert(result == 0); (void)result;
 
-    signal(SIGTERM, forward_signal);
-    signal(SIGINT,  forward_signal);
+        signal(SIGTERM, forward_signal);
+        signal(SIGINT,  forward_signal);
+    }
 
-    if (pid == 0) {
-        // child
+    {
+        // setup standard I/O
+        if (close(STDIN_FILENO) != 0 && errno != EBADFD) {
+            fprintf(stderr, "*** error: close(STDIN_FILENO): %s\n", strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
+
+        int stdin_fd = open("/dev/null", O_RDONLY);
+        if (stdin_fd == -1) {
+            fprintf(stderr, "*** error: open(\"/dev/null\", O_RDONLY): %s\n", strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
+
+        if (stdin_fd != STDIN_FILENO) {
+            if (dup2(stdin_fd, STDIN_FILENO) != 0) {
+                fprintf(stderr, "*** error: dup2(stdin_fd, STDIN_FILENO): %s\n", strerror(errno));
+                status = 1;
+                goto cleanup;
+            }
+
+            if (close(stdin_fd) != 0) {
+                fprintf(stderr, "*** error: close(stdin_fd): %s\n", strerror(errno));
+                status = 1;
+                goto cleanup;
+            }
+        }
+
+        if (dup2(logfile_fd, STDOUT_FILENO) != 0) {
+            fprintf(stderr, "*** error: dup2(logfile_fd, STDOUT_FILENO): %s\n", strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
+
+        if (dup2(logfile_fd, STDERR_FILENO) != 0) {
+            fprintf(stderr, "*** error: dup2(logfile_fd, STDERR_FILENO): %s\n", strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
+
         if (write_pidfile(pidfile_runner, getpid()) != 0) {
             fprintf(stderr, "*** error: write_pidfile(\"%s\", %u): %s\n", pidfile_runner, getpid(), strerror(errno));
             status = 1;
             goto cleanup;
         }
+    }
 
-        for (;;) {
-            posix_spawn_file_actions_t file_actions;
+    cleanup_pidfiles = true;
+    running = true;
+    while (running) {
+        int pipefd[2] = { -1, -1 };
 
-            int errnum = posix_spawn_file_actions_init(&file_actions);
-            if (errnum != 0) {
-                fprintf(stderr, "*** error: posix_spawn_file_actions_init: %s\n", strerror(errnum));
-                status = 1;
-                goto cleanup;
-            }
-
-            errnum = posix_spawn_file_actions_addclose(&file_actions, STDIN_FILENO);
-            if (errnum != 0) {
-                fprintf(stderr, "*** error: posix_spawn_file_actions_addclose(&file_actions, STDIN_FILENO): %s\n", strerror(errnum));
-                status = 1;
-                goto cleanup;
-            }
-
-            int pipefd[2] = { -1, -1 };
+        {
+            // logging pipe
             int result = pipe(pipefd);
             if (result != 0) {
                 fprintf(stderr, "*** error: pipe(pipefd): %s\n", strerror(errno));
@@ -613,100 +773,344 @@ int command_start(int argc, char *argv[]) {
                 goto cleanup;
             }
 
-            errnum = posix_spawn_file_actions_addclose(&file_actions, pipefd[0]);
-            if (errnum != 0) {
-                fprintf(stderr, "*** error: posix_spawn_file_actions_addclose(&file_actions, pipefd[0]): %s\n", strerror(errnum));
+            int flags = fcntl(pipefd[PIPE_READ], F_GETFL, 0);
+            if (flags == -1) {
+                fprintf(stderr, "*** error: fcntl(pipefd[PIPE_READ], F_GETFL, 0): %s\n", strerror(errno));
+                flags = 0;
+            }
+
+            if (fcntl(pipefd[PIPE_READ], F_SETFL, flags | O_NONBLOCK) == -1) {
+                fprintf(stderr, "*** error: fcntl(pipefd[PIPE_READ], F_SETFL, flags | O_NONBLOCK): %s\n", strerror(errno));
+            }
+        }
+
+        service_pid = fork();
+
+        if (service_pid < 0) {
+            fprintf(stderr, "*** error: fork for starting service failed: %s\n", strerror(errno));
+            status = 1;
+            close(pipefd[PIPE_READ]);
+            close(pipefd[PIPE_WRITE]);
+            goto cleanup;
+        } else if (service_pid == 0) {
+            // child
+            if (write_pidfile(pidfile, getpid()) != 0) {
+                fprintf(stderr, "*** error: write_pidfile(\"%s\", %u): %s\n", pidfile, getpid(), strerror(errno));
                 status = 1;
+                close(pipefd[PIPE_READ]);
+                close(pipefd[PIPE_WRITE]);
                 goto cleanup;
             }
 
-            errnum = posix_spawn_file_actions_adddup2(&file_actions, pipefd[1], STDOUT_FILENO);
-            if (errnum != 0) {
-                fprintf(stderr, "*** error: posix_spawn_file_actions_adddup2(&file_actions, STDOUT_FILENO, STDERR_FILENO): %s\n", strerror(errnum));
+            if (gid != 0 && setgroups(1, (gid_t[]){ gid }) != 0) {
+                fprintf(stderr, "*** error: child setgroups(1, (gid_t[]){ %u }): %s\n", gid, strerror(errno));
                 status = 1;
+                close(pipefd[PIPE_READ]);
+                close(pipefd[PIPE_WRITE]);
                 goto cleanup;
             }
 
-            errnum = posix_spawn_file_actions_adddup2(&file_actions, STDOUT_FILENO, STDERR_FILENO);
-            if (errnum != 0) {
-                fprintf(stderr, "*** error: posix_spawn_file_actions_adddup2(&file_actions, STDOUT_FILENO, STDERR_FILENO): %s\n", strerror(errnum));
+            if (uid != 0 && setuid(uid) != 0) {
+                fprintf(stderr, "*** error: child setuid(%u): %s\n", uid, strerror(errno));
                 status = 1;
+                close(pipefd[PIPE_READ]);
+                close(pipefd[PIPE_WRITE]);
                 goto cleanup;
             }
 
-            result = posix_spawnp(&service_pid, command, &file_actions, NULL, command_argv, environ);
-            close(pipefd[1]);
-
-            errnum = posix_spawn_file_actions_destroy(&file_actions);
-            if (errnum != 0) {
-                fprintf(stderr, "*** error: posix_spawn_file_actions_destroy: %s\n", strerror(errnum));
-                // but ignore
+            if (close(pipefd[PIPE_READ]) != 0) {
+                fprintf(stderr, "*** error: child close(pipefd[PIPE_READ]): %s\n", strerror(errno));
+                // though, ignore it anyway?
             }
 
-            if (result != 0) {
-                fprintf(stderr, "*** error: spawning %s: %s\n", command, strerror(result));
-                close(pipefd[0]);
+            if (dup2(pipefd[PIPE_WRITE], STDOUT_FILENO) != 0) {
+                fprintf(stderr, "*** error: child dup2(pipefd[PIPE_WRITE], STDOUT_FILENO): %s\n", strerror(errno));
                 status = 1;
+                close(pipefd[PIPE_WRITE]);
                 goto cleanup;
             }
 
-            int pidfd = pidfd_open(service_pid, 0);
-            if (pidfd == -1) {
-                fprintf(stderr, "*** error: pidfd_open(%u): %s\n", service_pid, strerror(errno));
-                // XXX: what to do here?
+            if (dup2(pipefd[PIPE_WRITE], STDERR_FILENO) != 0) {
+                fprintf(stderr, "*** error: child dup2(pipefd[PIPE_WRITE], STDERR_FILENO): %s\n", strerror(errno));
+                status = 1;
+                close(pipefd[PIPE_WRITE]);
+                goto cleanup;
             }
 
-            if (write_pidfile(pidfile, service_pid) != 0) {
-                fprintf(stderr, "*** error: write_pidfile(\"%s\", %u): %s\n", pidfile, service_pid, strerror(errno));
-                // XXX: what to do here?
+            if (close(pipefd[PIPE_WRITE]) != 0) {
+                fprintf(stderr, "*** error: child close(pipefd[PIPE_WRITE]): %s\n", strerror(errno));
+                // though, ignore it anyway?
             }
 
-            // TODO: poll for pidfd and pipefd[0]
+            execv(command, command_argv);
+            fprintf(stderr, "*** error: child execv(\"%s\", command_argv): %s\n", command, strerror(errno));
+            status = 1;
+            goto cleanup;
+        } else {
+            // parent
+            if (close(pipefd[PIPE_WRITE]) != 0) {
+                fprintf(stderr, "*** error: parent close(pipefd[PIPE_WRITE]): %s\n", strerror(errno));
+                // though, ignore it anyway?
+            }
 
-            struct pollfd pollfds[] = {
-                { pidfd,     POLLIN, 0 },
-                { pipefd[0], POLLIN, 0 },
-            };
+            service_pidfd = pidfd_open(service_pid, 0);
+            if (service_pidfd == -1) {
+                fprintf(stderr, "*** error: parent pidfd_open(%u): %s\n", service_pid, strerror(errno));
 
-            size_t open_count = 2;
-            while (open_count > 0) {
-                result = poll(pollfds, 2, -1);
-                if (result < 0) {
-                    fprintf(stderr, "*** error: poll(&pollfds, 2, -1): %s\n", strerror(errno));
+                if (kill(service_pid, SIGTERM) != 0 && errno != ESRCH) {
+                    fprintf(stderr, "*** error: parent kill(%u, SIGTERM): %s\n", service_pid, strerror(errno));
+                }
+
+                for (;;) {
+                    int child_status = 0;
+                    int result = waitpid(service_pid, &child_status, 0);
+                    if (result < 0) {
+                        if (errno == EINTR) {
+                            continue;
+                        }
+                        if (errno != ECHILD) {
+                            fprintf(stderr, "*** error: parent waitpid(%u, &status, 0): %s\n", service_pid, strerror(errno));
+                        }
+                    } else if (result == 0) {
+                        assert(false);
+                        continue;
+                    } else if (child_status != 0) {
+                        if (WIFSIGNALED(child_status)) {
+                            fprintf(stderr, "*** error: service PID %u exited with signal %d\n", service_pid, WTERMSIG(child_status));
+                        } else {
+                            fprintf(stderr, "*** error: service PID %u exited with status %d\n", service_pid, WEXITSTATUS(child_status));
+                        }
+                    }
                     break;
                 }
 
-                if (pollfds[0].revents & POLLIN) {
-                    // TODO
+                status = 1;
+                goto cleanup;
+            }
+
+            #define POLLFD_PID  0
+            #define POLLFD_PIPE 1
+
+            struct pollfd pollfds[] = {
+                [POLLFD_PID ] = { service_pidfd,     POLLIN, 0 },
+                [POLLFD_PIPE] = { pipefd[PIPE_READ], POLLIN, 0 },
+            };
+
+            while (pollfds[POLLFD_PID].events != 0 || pollfds[POLLFD_PIPE].events != 0) {
+                pollfds[POLLFD_PID ].revents = 0;
+                pollfds[POLLFD_PIPE].revents = 0;
+
+                int result = poll(pollfds, 2, -1);
+                if (result < 0) {
+                    if (errno == EINTR) {
+                        continue;
+                    }
+                    fprintf(stderr, "*** error: parent poll(&pollfds, 2, -1): %s\n", strerror(errno));
+                    break;
                 }
 
-                if (pollfds[0].revents & POLLHUP) {
-                    open_count --; // XXX
+                if (pollfds[POLLFD_PIPE].revents & POLLIN) {
+                    if (logfile_has_format) {
+                        // logrotate
+                        time_t now = time(NULL);
+                        struct tm local_now;
+                        if (localtime_r(&now, &local_now) == NULL) {
+                            fprintf(stderr, "*** error: parent getting local time: %s\n", strerror(errno));
+                            status = 1;
+                            goto cleanup;
+                        }
+
+                        if (strftime(new_logfile_path, sizeof(new_logfile_path), logfile, &local_now) == 0) {
+                            fprintf(stderr, "*** error: parent cannot format logfile \"%s\": %s\n", logfile, strerror(errno));
+                            status = 1;
+                            goto cleanup;
+                        }
+
+                        if (strcmp(new_logfile_path, logfile_path) != 0) {
+                            int new_logfile_fd = open(new_logfile_path, O_CREAT | O_WRONLY | O_CLOEXEC, 0644);
+                            if (logfile_fd == -1) {
+                                fprintf(stderr, "*** error: parent cannot open logfile: %s: %s\n", new_logfile_path, strerror(errno));
+                            }
+
+                            if (close(logfile_fd) != 0) {
+                                fprintf(stderr, "*** error: parent close(logfile_fd): %s\n", strerror(errno));
+                            }
+
+                            logfile_fd = new_logfile_fd;
+                            if (dup2(logfile_fd, STDOUT_FILENO) != 0) {
+                                fprintf(stderr, "*** error: parent dup2(logfile_fd, STDOUT_FILENO): %s\n", strerror(errno));
+                            }
+
+                            if (dup2(logfile_fd, STDERR_FILENO) != 0) {
+                                fprintf(stderr, "*** error: parent dup2(logfile_fd, STDERR_FILENO): %s\n", strerror(errno));
+                            }
+
+                            strcpy(logfile_path, new_logfile_path);
+                        }
+                    }
+
+                    // handle log messages
+                    ssize_t count = splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK);
+                    if (count < 0) {
+                        fprintf(stderr, "*** error: parent splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK): %s\n", strerror(errno));
+                    }
                 }
 
-                if (pollfds[0].revents & POLLERR) {
-                    
+                if (pollfds[POLLFD_PIPE].revents & (POLLHUP | POLLERR | POLLNVAL)) {
+                    pollfds[POLLFD_PIPE].events = 0;
                 }
 
-                if (pollfds[1].revents & POLLIN) {
-                    // TODO
+                if (pollfds[POLLFD_PID].revents & POLLIN) {
+                    siginfo_t siginfo;
+                    int result = waitid(P_PIDFD, service_pidfd, &siginfo, WNOHANG);
+                    if (result == 0) {
+                        // would have blocked
+                    } else if (result == -1) {
+                        pollfds[POLLFD_PIPE].events = 0;
+                        fprintf(stderr, "*** error: parent waitid(P_PIDFD, pidfd, &siginfo, WNOHANG): %s\n", strerror(errno));
+                    } else {
+                        pollfds[POLLFD_PIPE].events = 0;
+                        bool crash = false;
+                        switch (siginfo.si_code) {
+                            case CLD_EXITED:
+                                if (siginfo.si_status == 0) {
+                                    printf("%s exited normally\n", name);
+                                } else {
+                                    fprintf(stderr, "*** error: %s exited with error status %d\n", name, siginfo.si_status);
+                                    crash = true;
+                                }
+                                break;
+
+                            case CLD_KILLED:
+                                fprintf(stderr, "*** error: %s was killed by signal %d\n", name, siginfo.si_status);
+                                crash = true;
+
+                                switch (siginfo.si_status) {
+                                    case SIGTERM:
+                                    case SIGINT:
+                                    case SIGKILL:
+                                        printf("service stopped via signal %d -> don't restart\n", siginfo.si_status);
+                                        running = false;
+                                        break;
+                                }
+                                break;
+
+                            case CLD_DUMPED:
+                                fprintf(stderr, "*** error: %s was killed by signal %d and dumped core\n", name, siginfo.si_status);
+                                crash = true;
+                                break;
+
+                            case CLD_STOPPED:
+                            case CLD_TRAPPED:
+                            case CLD_CONTINUED:
+                                assert(false);
+                                break;
+
+                            default:
+                                assert(false);
+                                break;
+                        }
+
+                        if (crash) {
+                            struct timespec ts_before;
+                            struct timespec ts_after;
+                            bool time_ok = true;
+
+                            if (crash_report == NULL) {
+                                time_ok = false;
+                            } else {
+                                if (clock_gettime(CLOCK_MONOTONIC, &ts_before) != 0) {
+                                    time_ok = false;
+                                    fprintf(stderr, "*** error: parent clock_gettime(CLOCK_MONOTONIC, &ts_before): %s\n", strerror(errno));
+                                }
+
+                                const char *code_str =
+                                    siginfo.si_code == CLD_KILLED ? "KILLED" :
+                                    siginfo.si_code == CLD_DUMPED ? "DUMPED" :
+                                                                    "EXITED";
+                                char status_str[24];
+
+                                int result = snprintf(status_str, sizeof(status_str), "%d", siginfo.si_status);
+                                assert(result > 0 && result < sizeof(status_str));
+
+                                pid_t report_pid = 0;
+                                result = posix_spawn(&report_pid, crash_report, NULL, NULL,
+                                    (char*[]){ (char*)crash_report, (char*)code_str, status_str, logfile_path, NULL },
+                                    environ);
+
+                                if (result != 0) {
+                                    fprintf(stderr, "*** error: parent starting crash reporter: %s\n", strerror(errno));
+                                } else {
+                                    for (;;) {
+                                        int report_status = 0;
+                                        int result = waitpid(report_pid, &report_status, 0);
+                                        if (result < 0) {
+                                            if (errno == EINTR) {
+                                                continue;
+                                            }
+                                            fprintf(stderr, "*** error: parent waitpid(%u, &report_status, 0): %s\n", report_pid, strerror(errno));
+                                        } else if (result == 0) {
+                                            assert(false);
+                                            continue;
+                                        } else if (report_status != 0) {
+                                            if (WIFSIGNALED(report_status)) {
+                                                fprintf(stderr, "*** error: crash report PID %u exited with signal %d\n", report_pid, WTERMSIG(report_status));
+                                            } else {
+                                                fprintf(stderr, "*** error: crash report PID %u exited with status %d\n", report_pid, WEXITSTATUS(report_status));
+                                            }
+                                        }
+                                        break;
+                                    }
+                                }
+
+                                if (time_ok && clock_gettime(CLOCK_MONOTONIC, &ts_after) != 0) {
+                                    time_ok = false;
+                                    fprintf(stderr, "*** error: parent clock_gettime(CLOCK_MONOTONIC, &ts_after): %s\n", strerror(errno));
+                                }
+                            }
+
+                            if (running && crash_sleep) {
+                                if (time_ok) {
+                                    time_t secs = ts_after.tv_sec - ts_before.tv_sec;
+                                    if (secs <= crash_sleep) {
+                                        sleep(crash_sleep - secs);
+                                    }
+                                } else {
+                                    sleep(crash_sleep);
+                                }
+                            }
+                        } else {
+                            running = false;
+                        }
+                    }
                 }
 
-                if (pollfds[1].revents & POLLHUP) {
-                    open_count --; // XXX
-                }
-
-                if (pollfds[1].revents & POLLERR) {
-                    
+                if (pollfds[POLLFD_PID].revents & (POLLHUP | POLLERR | POLLNVAL)) {
+                    pollfds[POLLFD_PID].events = 0;
                 }
             }
 
-            close(pipefd[0]);
-            close(pidfd);
+            if (close(pipefd[PIPE_READ]) != 0) {
+                fprintf(stderr, "*** error: parent close(pipefd[PIPE_READ]): %s\n", strerror(errno));
+            }
+
+            if (close(service_pidfd) != 0) {
+                fprintf(stderr, "*** error: parent close(pidfd): %s\n", strerror(errno));
+            }
         }
     }
 
 cleanup:
+    if (cleanup_pidfiles) {
+        if (unlink(pidfile) != 0 && errno != ENOENT) {
+            fprintf(stderr, "*** error: unlink(\"%s\"): %s\n", pidfile, strerror(errno));
+        }
+
+        if (unlink(pidfile_runner) != 0 && errno != ENOENT) {
+            fprintf(stderr, "*** error: unlink(\"%s\"): %s\n", pidfile_runner, strerror(errno));
+        }
+    }
+
     free(pidfile_runner);
 
     if (auto_pidfile) {
@@ -717,21 +1121,358 @@ cleanup:
         free((char*)logfile);
     }
 
+    if (logfile_fd != -1) {
+        close(logfile_fd);
+    }
+
     return status;
 }
 
-const struct option common_options[] = {
-    { "pidfile", required_argument, 0, 'p' },
+const struct option stop_options[] = {
+    [OPT_STOP_PIDFILE]          = { "pidfile", required_argument, 0, 'p' },
+    [OPT_STOP_SHUTDOWN_TIMEOUT] = { "shutdown-timeout", required_argument, 0, 0 },
     { 0, 0, 0, 0 },
 };
 
 int command_stop(int argc, char *argv[]) {
-    (void)common_options;
-    return 0;
+    if (argc < 2) {
+        return 1;
+    }
+
+    int longind = 0;
+
+    const char *pidfile = NULL;
+    unsigned int shutdown_timeout = 0;
+
+    for (;;) {
+        int opt = getopt_long(argc - 1, argv + 1, "p:", stop_options, &longind);
+
+        if (opt == -1) {
+            break;
+        }
+
+        switch (opt) {
+            case 0:
+                switch (longind) {
+                    case OPT_STOP_SHUTDOWN_TIMEOUT:
+                    {
+                        char *endptr = NULL;
+                        unsigned long value = strtoul(optarg, &endptr, 10);
+                        if (!*optarg || *endptr || value > UINT_MAX) {
+                            fprintf(stderr, "*** error: illegal value for --shutdown-timeout: %s\n", optarg);
+                            return 1;
+                        }
+                        shutdown_timeout = value;
+                        break;
+                    }
+                }
+                break;
+
+            case 'p':
+                pidfile = optarg;
+                break;
+
+            case '?':
+                short_usage(argc, argv);
+                return 1;
+        }
+    }
+
+    int count = argc - optind;
+    if (count != 1) {
+        fprintf(stderr, "*** error: illegal number of arguments\n");
+        short_usage(argc, argv);
+        return 1;
+    }
+
+    const char *name = argv[optind ++];
+
+    int status = 0;
+    bool auto_pidfile = false;
+    char *pidfile_runner = NULL;
+
+    if (pidfile == NULL) {
+        auto_pidfile = true;
+
+        size_t bufsize = strlen("/var/run/.pid") + strlen(name) + 1;
+        char *buf = malloc(bufsize);
+        if (buf == NULL) {
+            fprintf(stderr, "*** error: malloc(%zu): %s\n", bufsize, strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
+
+        if (snprintf(buf, bufsize, "/var/run/%s.pid", name) != bufsize) {
+            assert(false);
+        }
+        pidfile = buf;
+    } else if (pidfile[0] != '/') {
+        fprintf(stderr, "*** error: pidfile needs to be an absolute path: %s\n", pidfile);
+        status = 1;
+        goto cleanup;
+    }
+
+    size_t pidfile_runner_size = strlen(pidfile) + strlen(".runner") + 1;
+    pidfile_runner = malloc(pidfile_runner_size);
+    if (pidfile_runner == NULL) {
+        fprintf(stderr, "*** error: malloc: %s\n", strerror(errno));
+        status = 1;
+        goto cleanup;
+    }
+
+    if (snprintf(pidfile_runner, pidfile_runner_size, "%s.runner", pidfile) != pidfile_runner_size) {
+        assert(false);
+    }
+
+    pid_t runner_pid = 0;
+    bool pidfile_runner_ok = read_pidfile(pidfile_runner, &runner_pid) == 0;
+    bool pidfile_ok        = read_pidfile(pidfile, &service_pid) == 0;
+
+    pid_t pid = 0;
+    if (pidfile_runner_ok) {
+        if (kill(runner_pid, SIGTERM) != 0) {
+            fprintf(stderr, "*** error: sending SIGTERM to service-runner PID %d: %s\n", runner_pid, strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
+
+        pid = runner_pid;
+    } else if (pidfile_ok) {
+        if (kill(service_pid, SIGTERM) != 0) {
+            fprintf(stderr, "*** error: sending SIGTERM to service PID %d: %s\n", service_pid, strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
+
+        pid = service_pid;
+    } else {
+        fprintf(stderr, "*** error: %s is not running\n", name);
+        goto cleanup;
+    }
+
+    struct timespec ts_before;
+    struct timespec ts_after;
+    bool time_ok = true;
+
+    if (shutdown_timeout != 0 && clock_gettime(CLOCK_MONOTONIC, &ts_before) != 0) {
+        time_ok = false;
+        fprintf(stderr, "*** error: clock_gettime(CLOCK_MONOTONIC, &ts_before): %s\n", strerror(errno));
+    }
+
+    bool had_timeout = false;
+    for (size_t count = 0; !had_timeout; ++ count) {
+        if (kill(pid, 0) == 0) {
+            if (shutdown_timeout != 0) {
+                if (time_ok && clock_gettime(CLOCK_MONOTONIC, &ts_after) != 0) {
+                    time_ok = false;
+                    fprintf(stderr, "*** error: clock_gettime(CLOCK_MONOTONIC, &ts_after): %s\n", strerror(errno));
+                }
+
+                if (time_ok) {
+                    time_t secs = ts_after.tv_sec - ts_before.tv_sec;
+                    if (secs > shutdown_timeout) {
+                        had_timeout = true;
+                        break;
+                    }
+                } else if (count > shutdown_timeout) {
+                    had_timeout = true;
+                    break;
+                }
+            }
+            sleep(1);
+        } else if (errno == ESRCH) {
+            break;
+        } else {
+            fprintf(stderr, "*** error: waiting for PID %d: %s\n", pid, strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
+    }
+
+    if (had_timeout) {
+        fprintf(stderr, "*** error: timeout waiting for %s to shutdown, sending SIGKILL\n", name);
+        status = 1;
+
+        if (pidfile_ok) {
+            if (kill(service_pid, SIGKILL) != 0) {
+                fprintf(stderr, "*** error: sending SIGKILL to service PID %d\n", service_pid);
+            }
+
+            if (read_pidfile(pidfile, &pid) == 0 && pid == service_pid && unlink(pidfile) != 0 && errno != ENOENT) {
+                fprintf(stderr, "*** error: unlink(\"%s\"): %s\n", pidfile, strerror(errno));
+            }
+        }
+
+        if (pidfile_runner_ok) {
+            if (kill(runner_pid, SIGKILL) != 0) {
+                fprintf(stderr, "*** error: sending SIGKILL to service-runner PID %d\n", runner_pid);
+            }
+
+            if (read_pidfile(pidfile_runner, &pid) == 0 && pid == runner_pid && unlink(pidfile_runner) != 0 && errno != ENOENT) {
+                fprintf(stderr, "*** error: unlink(\"%s\"): %s\n", pidfile_runner, strerror(errno));
+            }
+        }
+    }
+
+cleanup:
+    if (auto_pidfile) {
+        free((char*)pidfile);
+    }
+
+    return status;
 }
 
+const struct option status_options[] = {
+    [OPT_STATUS_PIDFILE] = { "pidfile", required_argument, 0, 'p' },
+    [OPT_STATUS_COUNT]   = { 0, 0, 0, 0 },
+};
+
 int command_status(int argc, char *argv[]) {
-    return 0;
+    if (argc < 2) {
+        return 1;
+    }
+
+    const char *pidfile = NULL;
+
+    for (;;) {
+        int opt = getopt_long(argc - 1, argv + 1, "p:", stop_options, NULL);
+
+        if (opt == -1) {
+            break;
+        }
+
+        switch (opt) {
+            case 'p':
+                pidfile = optarg;
+                break;
+
+            case '?':
+                short_usage(argc, argv);
+                return 1;
+        }
+    }
+
+    int count = argc - optind;
+    if (count != 1) {
+        fprintf(stderr, "*** error: illegal number of arguments\n");
+        short_usage(argc, argv);
+        return 1;
+    }
+
+    const char *name = argv[optind ++];
+
+    int status = 0;
+    bool auto_pidfile = false;
+    char *pidfile_runner = NULL;
+
+    if (pidfile == NULL) {
+        auto_pidfile = true;
+
+        size_t bufsize = strlen("/var/run/.pid") + strlen(name) + 1;
+        char *buf = malloc(bufsize);
+        if (buf == NULL) {
+            fprintf(stderr, "*** error: malloc(%zu): %s\n", bufsize, strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
+
+        if (snprintf(buf, bufsize, "/var/run/%s.pid", name) != bufsize) {
+            assert(false);
+        }
+        pidfile = buf;
+    } else if (pidfile[0] != '/') {
+        fprintf(stderr, "*** error: pidfile needs to be an absolute path: %s\n", pidfile);
+        status = 1;
+        goto cleanup;
+    }
+
+    size_t pidfile_runner_size = strlen(pidfile) + strlen(".runner") + 1;
+    pidfile_runner = malloc(pidfile_runner_size);
+    if (pidfile_runner == NULL) {
+        fprintf(stderr, "*** error: malloc: %s\n", strerror(errno));
+        status = 1;
+        goto cleanup;
+    }
+
+    if (snprintf(pidfile_runner, pidfile_runner_size, "%s.runner", pidfile) != pidfile_runner_size) {
+        assert(false);
+    }
+
+    pid_t runner_pid = 0;
+    bool pidfile_runner_ok = read_pidfile(pidfile_runner, &runner_pid) == 0;
+    bool pidfile_ok        = read_pidfile(pidfile, &service_pid) == 0;
+    bool runner_pid_ok  = false;
+    bool service_pid_ok = false;
+
+    if (pidfile_runner_ok) {
+        if (kill(runner_pid, 0) == 0) {
+            runner_pid_ok = true;
+        } else {
+            status = 2;
+            fprintf(stderr, "%s: error: pidfile %s exists, but service-runner PID %d does not\n", name, pidfile_runner, runner_pid);
+        }
+    }
+    
+    if (pidfile_ok) {
+        if (kill(service_pid, 0) == 0) {
+            service_pid_ok = true;
+        } else {
+            status = 3;
+            fprintf(stderr, "%s: error: pidfile %s exists, but service PID %d does not\n", name, pidfile, service_pid);
+        }
+    }
+
+    if (!pidfile_runner_ok && !pidfile_ok) {
+        fprintf(stderr, "%s is not running\n", name);
+        status = 1;
+    } else if (pidfile_runner_ok && pidfile_ok && runner_pid_ok && service_pid_ok) {
+        printf("%s is running\n", name);
+    }
+
+cleanup:
+    free(pidfile_runner);
+
+    if (auto_pidfile) {
+        free((char*)pidfile);
+    }
+
+    return status;
+}
+
+int command_help(int argc, char *argv[]) {
+    if (argc < 2) {
+        return 1;
+    }
+
+    if (argc == 2) {
+        usage(argc, argv);
+        return 0;
+    }
+
+    if (argc != 3) {
+        fprintf(stderr, "*** error: illegal number of arguments\n");
+        short_usage(argc, argv);
+        return 1;
+    }
+
+    const char *command = argv[2];
+    if (strcmp(command, "start") == 0) {
+        printf("\n" HELP_CMD_START, get_progname(argc, argv));
+        return 0;
+    } else if (strcmp(command, "stop") == 0) {
+        printf("\n" HELP_CMD_STOP, get_progname(argc, argv));
+        return 0;
+    } else if (strcmp(command, "status") == 0) {
+        printf("\n" HELP_CMD_STATUS, get_progname(argc, argv));
+        return 0;
+    } else if (strcmp(command, "help") == 0) {
+        printf("\n" HELP_CMD_HELP, get_progname(argc, argv));
+        return 0;
+    } else {
+        fprintf(stderr, "*** error: illegal command: %s\n", command);
+        short_usage(argc, argv);
+        return 1;
+    }
 }
 
 int main(int argc, char *argv[]) {
@@ -750,8 +1491,7 @@ int main(int argc, char *argv[]) {
     } else if (strcmp(command, "status") == 0) {
         return command_status(argc, argv);
     } else if (strcmp(command, "help") == 0) {
-        usage(argc, argv);
-        return 0;
+        return command_help(argc, argv);
     } else {
         fprintf(stderr, "*** error: illegal command: %s\n", command);
         usage(argc, argv);
