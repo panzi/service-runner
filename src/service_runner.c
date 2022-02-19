@@ -1172,6 +1172,8 @@ int command_start(int argc, char *argv[]) {
                             assert(false);
                         }
 
+                        service_pid = -1;
+
                         if (crash) {
                             struct timespec ts_before;
                             struct timespec ts_after;
@@ -1253,6 +1255,7 @@ int command_start(int argc, char *argv[]) {
             if (close(service_pidfd) != 0) {
                 fprintf(stderr, "*** error: (parent) close(pidfd): %s\n", strerror(errno));
             }
+            service_pidfd = -1;
         }
     }
 
