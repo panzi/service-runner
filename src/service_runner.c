@@ -518,7 +518,7 @@ int service_pidfd = -1;
 volatile bool running = false;
 
 void forward_signal(int sig) {
-    fprintf(stderr, "service-handler received signal %d, forwarding to service PID %u\n", sig, service_pid);
+    fprintf(stderr, "service-runner: received signal %d, forwarding to service PID %u\n", sig, service_pid);
     running = false;
 
     if (service_pidfd != -1 && pidfd_send_signal(service_pidfd, sig, NULL, 0) != 0) {
@@ -697,8 +697,8 @@ int command_start(int argc, char *argv[]) {
         return 0;
     }
 
-    uid_t selfuid = getuid();
-    uid_t selfgid = getgid();
+    uid_t selfuid = geteuid();
+    uid_t selfgid = getegid();
 
     uid_t xuid = uid == 0 ? selfuid : uid;
     gid_t xgid = gid == 0 ? selfgid : gid;
@@ -812,9 +812,9 @@ int command_start(int argc, char *argv[]) {
         }
     }
 
-    const bool logfile_has_format = strchr(logfile, '%') != NULL;
+    const bool do_logrotate = strchr(logfile, '%') != NULL;
 
-    if (logfile_has_format) {
+    if (do_logrotate) {
         time_t now = time(NULL);
         struct tm local_now;
         if (localtime_r(&now, &local_now) == NULL) {
@@ -926,8 +926,9 @@ int command_start(int argc, char *argv[]) {
     while (running) {
         int pipefd[2] = { -1, -1 };
 
-        {
+        if (do_logrotate) {
             // logging pipe
+            // if no log-rotating is done stdout/stderr pipes directly to the logfile, no need for the pipe
             int result = pipe(pipefd);
             if (result != 0) {
                 fprintf(stderr, "*** error: pipe(pipefd): %s\n", strerror(errno));
@@ -951,57 +952,67 @@ int command_start(int argc, char *argv[]) {
         if (service_pid < 0) {
             fprintf(stderr, "*** error: fork for starting service failed: %s\n", strerror(errno));
             status = 1;
-            close(pipefd[PIPE_READ]);
-            close(pipefd[PIPE_WRITE]);
+            if (do_logrotate) {
+                close(pipefd[PIPE_READ]);
+                close(pipefd[PIPE_WRITE]);
+            }
             goto cleanup;
         } else if (service_pid == 0) {
             // child
             if (write_pidfile(pidfile, getpid()) != 0) {
                 fprintf(stderr, "*** error: write_pidfile(\"%s\", %u): %s\n", pidfile, getpid(), strerror(errno));
                 status = 1;
-                close(pipefd[PIPE_READ]);
-                close(pipefd[PIPE_WRITE]);
+                if (do_logrotate) {
+                    close(pipefd[PIPE_READ]);
+                    close(pipefd[PIPE_WRITE]);
+                }
                 goto cleanup;
             }
 
             if (gid != 0 && setgroups(1, (gid_t[]){ gid }) != 0) {
                 fprintf(stderr, "*** error: (child) setgroups(1, (gid_t[]){ %u }): %s\n", gid, strerror(errno));
                 status = 1;
-                close(pipefd[PIPE_READ]);
-                close(pipefd[PIPE_WRITE]);
+                if (do_logrotate) {
+                    close(pipefd[PIPE_READ]);
+                    close(pipefd[PIPE_WRITE]);
+                }
                 goto cleanup;
             }
 
             if (uid != 0 && setuid(uid) != 0) {
                 fprintf(stderr, "*** error: (child) setuid(%u): %s\n", uid, strerror(errno));
                 status = 1;
-                close(pipefd[PIPE_READ]);
-                close(pipefd[PIPE_WRITE]);
+                if (do_logrotate) {
+                    close(pipefd[PIPE_READ]);
+                    close(pipefd[PIPE_WRITE]);
+                }
                 goto cleanup;
             }
 
-            if (close(pipefd[PIPE_READ]) != 0) {
-                fprintf(stderr, "*** error: (child) close(pipefd[PIPE_READ]): %s\n", strerror(errno));
-                // though, ignore it anyway?
-            }
+            if (do_logrotate) {
+                if (close(pipefd[PIPE_READ]) != 0) {
+                    fprintf(stderr, "*** error: (child) close(pipefd[PIPE_READ]): %s\n", strerror(errno));
+                    // though, ignore it anyway?
+                }
 
-            if (dup2(pipefd[PIPE_WRITE], STDOUT_FILENO) == -1) {
-                fprintf(stderr, "*** error: (child) dup2(pipefd[PIPE_WRITE], STDOUT_FILENO): %s\n", strerror(errno));
-                status = 1;
-                close(pipefd[PIPE_WRITE]);
-                goto cleanup;
-            }
+                if (dup2(pipefd[PIPE_WRITE], STDOUT_FILENO) == -1) {
+                    fprintf(stderr, "*** error: (child) dup2(pipefd[PIPE_WRITE], STDOUT_FILENO): %s\n", strerror(errno));
+                    status = 1;
+                    close(pipefd[PIPE_WRITE]);
+                    goto cleanup;
+                }
 
-            if (dup2(pipefd[PIPE_WRITE], STDERR_FILENO) == -1) {
-                fprintf(stderr, "*** error: (child) dup2(pipefd[PIPE_WRITE], STDERR_FILENO): %s\n", strerror(errno));
-                status = 1;
-                close(pipefd[PIPE_WRITE]);
-                goto cleanup;
-            }
+                if (dup2(pipefd[PIPE_WRITE], STDERR_FILENO) == -1) {
+                    fprintf(stderr, "*** error: (child) dup2(pipefd[PIPE_WRITE], STDERR_FILENO): %s\n", strerror(errno));
+                    status = 1;
+                    close(pipefd[PIPE_WRITE]);
+                    goto cleanup;
+                }
 
-            if (close(pipefd[PIPE_WRITE]) != 0) {
-                fprintf(stderr, "*** error: (child) close(pipefd[PIPE_WRITE]): %s\n", strerror(errno));
-                // though, ignore it anyway?
+                if (close(pipefd[PIPE_WRITE]) != 0) {
+                    fprintf(stderr, "*** error: (child) close(pipefd[PIPE_WRITE]): %s\n", strerror(errno));
+                    // though, ignore it anyway?
+                }
             }
 
             execv(command, command_argv);
@@ -1010,7 +1021,7 @@ int command_start(int argc, char *argv[]) {
             goto cleanup;
         } else {
             // parent
-            if (close(pipefd[PIPE_WRITE]) != 0) {
+            if (do_logrotate && close(pipefd[PIPE_WRITE]) != 0) {
                 fprintf(stderr, "*** error: (parent) close(pipefd[PIPE_WRITE]): %s\n", strerror(errno));
                 // though, ignore it anyway?
             }
@@ -1055,7 +1066,7 @@ int command_start(int argc, char *argv[]) {
 
             struct pollfd pollfds[] = {
                 [POLLFD_PID ] = { service_pidfd,     POLLIN, 0 },
-                [POLLFD_PIPE] = { pipefd[PIPE_READ], POLLIN, 0 },
+                [POLLFD_PIPE] = { pipefd[PIPE_READ], do_logrotate ? POLLIN : 0, 0 },
             };
 
             while (pollfds[POLLFD_PID].events != 0 || pollfds[POLLFD_PIPE].events != 0) {
@@ -1074,8 +1085,8 @@ int command_start(int argc, char *argv[]) {
                     break;
                 }
 
-                if (pollfds[POLLFD_PIPE].revents & POLLIN) {
-                    if (logfile_has_format) {
+                if (do_logrotate) {
+                    if (pollfds[POLLFD_PIPE].revents & POLLIN) {
                         // logrotate
                         time_t now = time(NULL);
                         struct tm local_now;
@@ -1112,17 +1123,17 @@ int command_start(int argc, char *argv[]) {
 
                             strcpy(logfile_path, new_logfile_path);
                         }
+
+                        // handle log messages
+                        ssize_t count = splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK);
+                        if (count < 0) {
+                            fprintf(stderr, "*** error: (parent) splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK): %s\n", strerror(errno));
+                        }
                     }
 
-                    // handle log messages
-                    ssize_t count = splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK);
-                    if (count < 0) {
-                        fprintf(stderr, "*** error: (parent) splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK): %s\n", strerror(errno));
+                    if (pollfds[POLLFD_PIPE].revents & (POLLHUP | POLLERR | POLLNVAL)) {
+                        pollfds[POLLFD_PIPE].events = 0;
                     }
-                }
-
-                if (pollfds[POLLFD_PIPE].revents & (POLLHUP | POLLERR | POLLNVAL)) {
-                    pollfds[POLLFD_PIPE].events = 0;
                 }
 
                 if (pollfds[POLLFD_PID].revents & POLLIN) {
@@ -1145,25 +1156,25 @@ int command_start(int argc, char *argv[]) {
                             code_str = "EXITED";
 
                             if (param == 0) {
-                                printf("%s exited normally\n", name);
+                                printf("service-runner: %s exited normally\n", name);
                             } else {
-                                fprintf(stderr, "*** error: %s exited with error status %d\n", name, param);
+                                fprintf(stderr, "service-runner: *** error: %s exited with error status %d\n", name, param);
                                 crash = true;
                             }
                         } else if (WIFSIGNALED(service_status)) {
                             param = WTERMSIG(service_status);
                             if (WCOREDUMP(service_status)) {
                                 code_str = "DUMPED";
-                                fprintf(stderr, "*** error: %s was killed by signal %d\n", name, param);
+                                fprintf(stderr, "service-runner: *** error: %s was killed by signal %d\n", name, param);
                             } else {
                                 code_str = "KILLED";
-                                fprintf(stderr, "*** error: %s was killed by signal %d and dumped core\n", name, param);
+                                fprintf(stderr, "service-runner: *** error: %s was killed by signal %d and dumped core\n", name, param);
 
                                 switch (param) {
                                     case SIGTERM:
                                     case SIGINT:
                                     case SIGKILL:
-                                        printf("service stopped via signal %d -> don't restart\n", param);
+                                        printf("service-runner: service stopped via signal %d -> don't restart\n", param);
                                         running = false;
                                         break;
                                 }
@@ -1248,7 +1259,7 @@ int command_start(int argc, char *argv[]) {
                 }
             }
 
-            if (close(pipefd[PIPE_READ]) != 0) {
+            if (do_logrotate && close(pipefd[PIPE_READ]) != 0) {
                 fprintf(stderr, "*** error: (parent) close(pipefd[PIPE_READ]): %s\n", strerror(errno));
             }
 

@@ -2,20 +2,22 @@
 
 set -eo pipefail
 
+name=$(basename "$0" .sh)
+
 function handle_sigterm () {
-    echo "received SIGTERM, exiting..."
+    printf '[%(%Y-%m-%d %H:%M:%S%z)T] %s received SIGTERM, exiting...\n' -1 "$name"
     exit
 }
 
 trap handle_sigterm SIGTERM
 
-echo "$0 started"
+printf '[%(%Y-%m-%d %H:%M:%S%z)T] %s started\n' -1 "$name"
 
 while true; do
     if [[ "$RANDOM" -gt 16383 ]]; then
-        echo "$0: stdout message"
+        printf '[%(%Y-%m-%d %H:%M:%S%z)T] %s: stdout message\n' -1 "$name"
     else
-        echo "$0: stderr message">&2
+        printf '[%(%Y-%m-%d %H:%M:%S%z)T] %s: stderr message\n' -1 "$name">&2
     fi
 
     sleep 5
