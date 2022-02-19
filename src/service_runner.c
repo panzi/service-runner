@@ -887,7 +887,7 @@ int command_start(int argc, char *argv[]) {
         }
 
         if (stdin_fd != STDIN_FILENO) {
-            if (dup2(stdin_fd, STDIN_FILENO) != 0) {
+            if (dup2(stdin_fd, STDIN_FILENO) == -1) {
                 fprintf(stderr, "*** error: dup2(stdin_fd, STDIN_FILENO): %s\n", strerror(errno));
                 status = 1;
                 goto cleanup;
@@ -900,13 +900,13 @@ int command_start(int argc, char *argv[]) {
             }
         }
 
-        if (dup2(logfile_fd, STDOUT_FILENO) != 0) {
+        if (dup2(logfile_fd, STDOUT_FILENO) == -1) {
             fprintf(stderr, "*** error: dup2(logfile_fd, STDOUT_FILENO): %s\n", strerror(errno));
             status = 1;
             goto cleanup;
         }
 
-        if (dup2(logfile_fd, STDERR_FILENO) != 0) {
+        if (dup2(logfile_fd, STDERR_FILENO) == -1) {
             fprintf(stderr, "*** error: dup2(logfile_fd, STDERR_FILENO): %s\n", strerror(errno));
             status = 1;
             goto cleanup;
@@ -983,14 +983,14 @@ int command_start(int argc, char *argv[]) {
                 // though, ignore it anyway?
             }
 
-            if (dup2(pipefd[PIPE_WRITE], STDOUT_FILENO) != 0) {
+            if (dup2(pipefd[PIPE_WRITE], STDOUT_FILENO) == -1) {
                 fprintf(stderr, "*** error: child dup2(pipefd[PIPE_WRITE], STDOUT_FILENO): %s\n", strerror(errno));
                 status = 1;
                 close(pipefd[PIPE_WRITE]);
                 goto cleanup;
             }
 
-            if (dup2(pipefd[PIPE_WRITE], STDERR_FILENO) != 0) {
+            if (dup2(pipefd[PIPE_WRITE], STDERR_FILENO) == -1) {
                 fprintf(stderr, "*** error: child dup2(pipefd[PIPE_WRITE], STDERR_FILENO): %s\n", strerror(errno));
                 status = 1;
                 close(pipefd[PIPE_WRITE]);
@@ -1097,11 +1097,11 @@ int command_start(int argc, char *argv[]) {
                             }
 
                             logfile_fd = new_logfile_fd;
-                            if (dup2(logfile_fd, STDOUT_FILENO) != 0) {
+                            if (dup2(logfile_fd, STDOUT_FILENO) == -1) {
                                 fprintf(stderr, "*** error: parent dup2(logfile_fd, STDOUT_FILENO): %s\n", strerror(errno));
                             }
 
-                            if (dup2(logfile_fd, STDERR_FILENO) != 0) {
+                            if (dup2(logfile_fd, STDERR_FILENO) == -1) {
                                 fprintf(stderr, "*** error: parent dup2(logfile_fd, STDERR_FILENO): %s\n", strerror(errno));
                             }
 
