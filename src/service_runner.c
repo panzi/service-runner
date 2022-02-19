@@ -257,7 +257,7 @@ char *abspath(const char *path) {
                 return NULL;
             }
             int count = snprintf(buf, bufsize, "%s/%s", curdir, path);
-            assert(count >= 0 && (size_t)count == bufsize - 1);
+            assert(count >= 0 && (size_t)count == bufsize - 1); (void)count;
             free(tmp);
             return buf;
         }
@@ -279,7 +279,7 @@ char *abspath(const char *path) {
                 return NULL;
             }
             int count = snprintf(buf, bufsize, "%s/%s", parent, path + index);
-            assert(count >= 0 && (size_t)count == bufsize - 1);
+            assert(count >= 0 && (size_t)count == bufsize - 1); (void)count;
             free(parent);
             free(tmp);
             return buf;
@@ -518,10 +518,13 @@ int service_pidfd = -1;
 volatile bool running = false;
 
 void forward_signal(int sig) {
+    fprintf(stderr, "service-handler received signal %d, forwarding to service PID %u\n", sig, service_pid);
     running = false;
 
     if (service_pidfd != -1 && pidfd_send_signal(service_pidfd, sig, NULL, 0) != 0) {
         if (errno == EBADFD || errno == ENOSYS) {
+            fprintf(stderr, "*** error: pidfd_send_signal(%d, %d, NULL, 0) failed, using kill(%d, %d): %s\n",
+                service_pidfd, sig, service_pid, sig, strerror(errno));
             if (service_pid != 0 && kill(service_pid, sig) != 0) {
                 fprintf(stderr, "*** error: forwarding signal %d to PID %d: %s\n", sig, service_pid, strerror(errno));
             }
@@ -547,9 +550,8 @@ enum AbsPathResult get_pidfile_abspath(char **pidfile_ptr, const char *name) {
             return ABS_PATH_ERR;
         }
 
-        if (snprintf(buf, bufsize, "/var/run/%s.pid", name) != bufsize - 1) {
-            assert(false);
-        }
+        int count = snprintf(buf, bufsize, "/var/run/%s.pid", name);
+        assert(count >= 0 && (size_t)count == bufsize - 1); (void)count;
 
         *pidfile_ptr = buf;
         return ABS_PATH_NEW;
@@ -577,9 +579,8 @@ enum AbsPathResult get_logfile_abspath(char **logfile_ptr, const char *name) {
             return ABS_PATH_ERR;
         }
 
-        if (snprintf(buf, bufsize, "/var/log/%s-%%Y-%%m-%%d.log", name) != bufsize - 1) {
-            assert(false);
-        }
+        int count = snprintf(buf, bufsize, "/var/log/%s-%%Y-%%m-%%d.log", name);
+        assert(count >= 0 && (size_t)count == bufsize - 1); (void)count;
 
         *logfile_ptr = buf;
         return ABS_PATH_NEW;
@@ -762,16 +763,17 @@ int command_start(int argc, char *argv[]) {
             goto cleanup;
     }
 
-    size_t pidfile_runner_size = strlen(pidfile) + strlen(".runner") + 1;
-    pidfile_runner = malloc(pidfile_runner_size);
-    if (pidfile_runner == NULL) {
-        fprintf(stderr, "*** error: malloc: %s\n", strerror(errno));
-        status = 1;
-        goto cleanup;
-    }
+    {
+        size_t pidfile_runner_size = strlen(pidfile) + strlen(".runner") + 1;
+        pidfile_runner = malloc(pidfile_runner_size);
+        if (pidfile_runner == NULL) {
+            fprintf(stderr, "*** error: malloc: %s\n", strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
 
-    if (snprintf(pidfile_runner, pidfile_runner_size, "%s.runner", pidfile) != pidfile_runner_size - 1) {
-        assert(false);
+        int count = snprintf(pidfile_runner, pidfile_runner_size, "%s.runner", pidfile);
+        assert(count >= 0 && (size_t)count == pidfile_runner_size - 1); (void)count;
     }
 
     if (!can_read_write(pidfile, selfuid, selfgid)) {
@@ -791,7 +793,7 @@ int command_start(int argc, char *argv[]) {
                 fprintf(stderr, "*** error: %s exists, but PID %d doesn't exist.\n", pidfile_runner, runner_pid);
                 pid_t other_pid = 0;
                 if (read_pidfile(pidfile, &other_pid) == 0) {
-                    if (kill(other_pid, 0) != 0) {
+                    if (kill(other_pid, 0) == 0) {
                         fprintf(stderr, "*** error: Service is running (PID: %d), but it's service-runner is not!\n", other_pid);
                         fprintf(stderr, "           You probably will want to kill that process?\n");
                         status = 1;
@@ -963,7 +965,7 @@ int command_start(int argc, char *argv[]) {
             }
 
             if (gid != 0 && setgroups(1, (gid_t[]){ gid }) != 0) {
-                fprintf(stderr, "*** error: child setgroups(1, (gid_t[]){ %u }): %s\n", gid, strerror(errno));
+                fprintf(stderr, "*** error: (child) setgroups(1, (gid_t[]){ %u }): %s\n", gid, strerror(errno));
                 status = 1;
                 close(pipefd[PIPE_READ]);
                 close(pipefd[PIPE_WRITE]);
@@ -971,7 +973,7 @@ int command_start(int argc, char *argv[]) {
             }
 
             if (uid != 0 && setuid(uid) != 0) {
-                fprintf(stderr, "*** error: child setuid(%u): %s\n", uid, strerror(errno));
+                fprintf(stderr, "*** error: (child) setuid(%u): %s\n", uid, strerror(errno));
                 status = 1;
                 close(pipefd[PIPE_READ]);
                 close(pipefd[PIPE_WRITE]);
@@ -979,46 +981,46 @@ int command_start(int argc, char *argv[]) {
             }
 
             if (close(pipefd[PIPE_READ]) != 0) {
-                fprintf(stderr, "*** error: child close(pipefd[PIPE_READ]): %s\n", strerror(errno));
+                fprintf(stderr, "*** error: (child) close(pipefd[PIPE_READ]): %s\n", strerror(errno));
                 // though, ignore it anyway?
             }
 
             if (dup2(pipefd[PIPE_WRITE], STDOUT_FILENO) == -1) {
-                fprintf(stderr, "*** error: child dup2(pipefd[PIPE_WRITE], STDOUT_FILENO): %s\n", strerror(errno));
+                fprintf(stderr, "*** error: (child) dup2(pipefd[PIPE_WRITE], STDOUT_FILENO): %s\n", strerror(errno));
                 status = 1;
                 close(pipefd[PIPE_WRITE]);
                 goto cleanup;
             }
 
             if (dup2(pipefd[PIPE_WRITE], STDERR_FILENO) == -1) {
-                fprintf(stderr, "*** error: child dup2(pipefd[PIPE_WRITE], STDERR_FILENO): %s\n", strerror(errno));
+                fprintf(stderr, "*** error: (child) dup2(pipefd[PIPE_WRITE], STDERR_FILENO): %s\n", strerror(errno));
                 status = 1;
                 close(pipefd[PIPE_WRITE]);
                 goto cleanup;
             }
 
             if (close(pipefd[PIPE_WRITE]) != 0) {
-                fprintf(stderr, "*** error: child close(pipefd[PIPE_WRITE]): %s\n", strerror(errno));
+                fprintf(stderr, "*** error: (child) close(pipefd[PIPE_WRITE]): %s\n", strerror(errno));
                 // though, ignore it anyway?
             }
 
             execv(command, command_argv);
-            fprintf(stderr, "*** error: child execv(\"%s\", command_argv): %s\n", command, strerror(errno));
+            fprintf(stderr, "*** error: (child) execv(\"%s\", command_argv): %s\n", command, strerror(errno));
             status = 1;
             goto cleanup;
         } else {
             // parent
             if (close(pipefd[PIPE_WRITE]) != 0) {
-                fprintf(stderr, "*** error: parent close(pipefd[PIPE_WRITE]): %s\n", strerror(errno));
+                fprintf(stderr, "*** error: (parent) close(pipefd[PIPE_WRITE]): %s\n", strerror(errno));
                 // though, ignore it anyway?
             }
 
             service_pidfd = pidfd_open(service_pid, 0);
             if (service_pidfd == -1) {
-                fprintf(stderr, "*** error: parent pidfd_open(%u): %s\n", service_pid, strerror(errno));
+                fprintf(stderr, "*** error: (parent) pidfd_open(%u): %s\n", service_pid, strerror(errno));
 
                 if (kill(service_pid, SIGTERM) != 0 && errno != ESRCH) {
-                    fprintf(stderr, "*** error: parent kill(%u, SIGTERM): %s\n", service_pid, strerror(errno));
+                    fprintf(stderr, "*** error: (parent) kill(%u, SIGTERM): %s\n", service_pid, strerror(errno));
                 }
 
                 for (;;) {
@@ -1029,7 +1031,7 @@ int command_start(int argc, char *argv[]) {
                             continue;
                         }
                         if (errno != ECHILD) {
-                            fprintf(stderr, "*** error: parent waitpid(%u, &status, 0): %s\n", service_pid, strerror(errno));
+                            fprintf(stderr, "*** error: (parent) waitpid(%u, &status, 0): %s\n", service_pid, strerror(errno));
                         }
                     } else if (result == 0) {
                         assert(false);
@@ -1060,12 +1062,15 @@ int command_start(int argc, char *argv[]) {
                 pollfds[POLLFD_PID ].revents = 0;
                 pollfds[POLLFD_PIPE].revents = 0;
 
-                int result = poll(pollfds, 2, -1);
+                int result =
+                    pollfds[0].events == 0 ? poll(pollfds + 1, 1, -1) :
+                    pollfds[1].events == 0 ? poll(pollfds, 1, -1) :
+                                             poll(pollfds, 2, -1);
                 if (result < 0) {
                     if (errno == EINTR) {
                         continue;
                     }
-                    fprintf(stderr, "*** error: parent poll(&pollfds, 2, -1): %s\n", strerror(errno));
+                    fprintf(stderr, "*** error: (parent) poll(&pollfds, 2, -1): %s\n", strerror(errno));
                     break;
                 }
 
@@ -1075,13 +1080,13 @@ int command_start(int argc, char *argv[]) {
                         time_t now = time(NULL);
                         struct tm local_now;
                         if (localtime_r(&now, &local_now) == NULL) {
-                            fprintf(stderr, "*** error: parent getting local time: %s\n", strerror(errno));
+                            fprintf(stderr, "*** error: (parent) getting local time: %s\n", strerror(errno));
                             status = 1;
                             goto cleanup;
                         }
 
                         if (strftime(new_logfile_path, sizeof(new_logfile_path), logfile, &local_now) == 0) {
-                            fprintf(stderr, "*** error: parent cannot format logfile \"%s\": %s\n", logfile, strerror(errno));
+                            fprintf(stderr, "*** error: (parent) cannot format logfile \"%s\": %s\n", logfile, strerror(errno));
                             status = 1;
                             goto cleanup;
                         }
@@ -1089,20 +1094,20 @@ int command_start(int argc, char *argv[]) {
                         if (strcmp(new_logfile_path, logfile_path) != 0) {
                             int new_logfile_fd = open(new_logfile_path, O_CREAT | O_WRONLY | O_CLOEXEC, 0644);
                             if (logfile_fd == -1) {
-                                fprintf(stderr, "*** error: parent cannot open logfile: %s: %s\n", new_logfile_path, strerror(errno));
+                                fprintf(stderr, "*** error: (parent) cannot open logfile: %s: %s\n", new_logfile_path, strerror(errno));
                             }
 
                             if (close(logfile_fd) != 0) {
-                                fprintf(stderr, "*** error: parent close(logfile_fd): %s\n", strerror(errno));
+                                fprintf(stderr, "*** error: (parent) close(logfile_fd): %s\n", strerror(errno));
                             }
 
                             logfile_fd = new_logfile_fd;
                             if (dup2(logfile_fd, STDOUT_FILENO) == -1) {
-                                fprintf(stderr, "*** error: parent dup2(logfile_fd, STDOUT_FILENO): %s\n", strerror(errno));
+                                fprintf(stderr, "*** error: (parent) dup2(logfile_fd, STDOUT_FILENO): %s\n", strerror(errno));
                             }
 
                             if (dup2(logfile_fd, STDERR_FILENO) == -1) {
-                                fprintf(stderr, "*** error: parent dup2(logfile_fd, STDERR_FILENO): %s\n", strerror(errno));
+                                fprintf(stderr, "*** error: (parent) dup2(logfile_fd, STDERR_FILENO): %s\n", strerror(errno));
                             }
 
                             strcpy(logfile_path, new_logfile_path);
@@ -1112,7 +1117,7 @@ int command_start(int argc, char *argv[]) {
                     // handle log messages
                     ssize_t count = splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK);
                     if (count < 0) {
-                        fprintf(stderr, "*** error: parent splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK): %s\n", strerror(errno));
+                        fprintf(stderr, "*** error: (parent) splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK): %s\n", strerror(errno));
                     }
                 }
 
@@ -1121,54 +1126,50 @@ int command_start(int argc, char *argv[]) {
                 }
 
                 if (pollfds[POLLFD_PID].revents & POLLIN) {
-                    siginfo_t siginfo;
-                    int result = waitid(P_PIDFD, service_pidfd, &siginfo, WNOHANG);
+                    // waitid() doesn't work for some reason! always produces ECHLD
+                    int service_status = 0;
+                    pid_t result = waitpid(service_pid, &service_status, WNOHANG);
                     if (result == 0) {
                         // would have blocked
                     } else if (result == -1) {
-                        pollfds[POLLFD_PIPE].events = 0;
-                        fprintf(stderr, "*** error: parent waitid(P_PIDFD, pidfd, &siginfo, WNOHANG): %s\n", strerror(errno));
+                        pollfds[POLLFD_PID].events = 0;
+                        fprintf(stderr, "*** error: (parent) waitpid(%d, &service_status, WNOHANG): %s\n", service_pid, strerror(errno));
                     } else {
-                        pollfds[POLLFD_PIPE].events = 0;
+                        pollfds[POLLFD_PID].events = 0;
                         bool crash = false;
-                        switch (siginfo.si_code) {
-                            case CLD_EXITED:
-                                if (siginfo.si_status == 0) {
-                                    printf("%s exited normally\n", name);
-                                } else {
-                                    fprintf(stderr, "*** error: %s exited with error status %d\n", name, siginfo.si_status);
-                                    crash = true;
-                                }
-                                break;
+                        int param = 0;
+                        const char *code_str = NULL;
 
-                            case CLD_KILLED:
-                                fprintf(stderr, "*** error: %s was killed by signal %d\n", name, siginfo.si_status);
+                        if (WIFEXITED(service_status)) {
+                            param = WEXITSTATUS(service_status);
+                            code_str = "EXITED";
+
+                            if (param == 0) {
+                                printf("%s exited normally\n", name);
+                            } else {
+                                fprintf(stderr, "*** error: %s exited with error status %d\n", name, param);
                                 crash = true;
+                            }
+                        } else if (WIFSIGNALED(service_status)) {
+                            param = WTERMSIG(service_status);
+                            if (WCOREDUMP(service_status)) {
+                                code_str = "DUMPED";
+                                fprintf(stderr, "*** error: %s was killed by signal %d\n", name, param);
+                            } else {
+                                code_str = "KILLED";
+                                fprintf(stderr, "*** error: %s was killed by signal %d and dumped core\n", name, param);
 
-                                switch (siginfo.si_status) {
+                                switch (param) {
                                     case SIGTERM:
                                     case SIGINT:
                                     case SIGKILL:
-                                        printf("service stopped via signal %d -> don't restart\n", siginfo.si_status);
+                                        printf("service stopped via signal %d -> don't restart\n", param);
                                         running = false;
                                         break;
                                 }
-                                break;
-
-                            case CLD_DUMPED:
-                                fprintf(stderr, "*** error: %s was killed by signal %d and dumped core\n", name, siginfo.si_status);
-                                crash = true;
-                                break;
-
-                            case CLD_STOPPED:
-                            case CLD_TRAPPED:
-                            case CLD_CONTINUED:
-                                assert(false);
-                                break;
-
-                            default:
-                                assert(false);
-                                break;
+                            }
+                        } else {
+                            assert(false);
                         }
 
                         if (crash) {
@@ -1181,25 +1182,20 @@ int command_start(int argc, char *argv[]) {
                             } else {
                                 if (clock_gettime(CLOCK_MONOTONIC, &ts_before) != 0) {
                                     time_ok = false;
-                                    fprintf(stderr, "*** error: parent clock_gettime(CLOCK_MONOTONIC, &ts_before): %s\n", strerror(errno));
+                                    fprintf(stderr, "*** error: (parent) clock_gettime(CLOCK_MONOTONIC, &ts_before): %s\n", strerror(errno));
                                 }
 
-                                const char *code_str =
-                                    siginfo.si_code == CLD_KILLED ? "KILLED" :
-                                    siginfo.si_code == CLD_DUMPED ? "DUMPED" :
-                                                                    "EXITED";
-                                char status_str[24];
-
-                                int result = snprintf(status_str, sizeof(status_str), "%d", siginfo.si_status);
-                                assert(result > 0 && result <= sizeof(status_str));
+                                char param_str[24];
+                                int result = snprintf(param_str, sizeof(param_str), "%d", param);
+                                assert(result > 0 && result < sizeof(param_str));
 
                                 pid_t report_pid = 0;
                                 result = posix_spawn(&report_pid, crash_report, NULL, NULL,
-                                    (char*[]){ (char*)crash_report, (char*)code_str, status_str, logfile_path, NULL },
+                                    (char*[]){ (char*)crash_report, (char*)code_str, param_str, logfile_path, NULL },
                                     environ);
 
                                 if (result != 0) {
-                                    fprintf(stderr, "*** error: parent starting crash reporter: %s\n", strerror(errno));
+                                    fprintf(stderr, "*** error: (parent) starting crash reporter: %s\n", strerror(errno));
                                 } else {
                                     for (;;) {
                                         int report_status = 0;
@@ -1208,7 +1204,7 @@ int command_start(int argc, char *argv[]) {
                                             if (errno == EINTR) {
                                                 continue;
                                             }
-                                            fprintf(stderr, "*** error: parent waitpid(%u, &report_status, 0): %s\n", report_pid, strerror(errno));
+                                            fprintf(stderr, "*** error: (parent) waitpid(%u, &report_status, 0): %s\n", report_pid, strerror(errno));
                                         } else if (result == 0) {
                                             assert(false);
                                             continue;
@@ -1225,7 +1221,7 @@ int command_start(int argc, char *argv[]) {
 
                                 if (time_ok && clock_gettime(CLOCK_MONOTONIC, &ts_after) != 0) {
                                     time_ok = false;
-                                    fprintf(stderr, "*** error: parent clock_gettime(CLOCK_MONOTONIC, &ts_after): %s\n", strerror(errno));
+                                    fprintf(stderr, "*** error: (parent) clock_gettime(CLOCK_MONOTONIC, &ts_after): %s\n", strerror(errno));
                                 }
                             }
 
@@ -1251,11 +1247,11 @@ int command_start(int argc, char *argv[]) {
             }
 
             if (close(pipefd[PIPE_READ]) != 0) {
-                fprintf(stderr, "*** error: parent close(pipefd[PIPE_READ]): %s\n", strerror(errno));
+                fprintf(stderr, "*** error: (parent) close(pipefd[PIPE_READ]): %s\n", strerror(errno));
             }
 
             if (close(service_pidfd) != 0) {
-                fprintf(stderr, "*** error: parent close(pidfd): %s\n", strerror(errno));
+                fprintf(stderr, "*** error: (parent) close(pidfd): %s\n", strerror(errno));
             }
         }
     }
@@ -1371,16 +1367,17 @@ int command_stop(int argc, char *argv[]) {
             goto cleanup;
     }
 
-    size_t pidfile_runner_size = strlen(pidfile) + strlen(".runner") + 1;
-    pidfile_runner = malloc(pidfile_runner_size);
-    if (pidfile_runner == NULL) {
-        fprintf(stderr, "*** error: malloc: %s\n", strerror(errno));
-        status = 1;
-        goto cleanup;
-    }
+    {
+        size_t pidfile_runner_size = strlen(pidfile) + strlen(".runner") + 1;
+        pidfile_runner = malloc(pidfile_runner_size);
+        if (pidfile_runner == NULL) {
+            fprintf(stderr, "*** error: malloc: %s\n", strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
 
-    if (snprintf(pidfile_runner, pidfile_runner_size, "%s.runner", pidfile) != pidfile_runner_size - 1) {
-        assert(false);
+        int count = snprintf(pidfile_runner, pidfile_runner_size, "%s.runner", pidfile);
+        assert(count >= 0 && (size_t)count == pidfile_runner_size - 1); (void)count;
     }
 
     pid_t runner_pid = 0;
@@ -1395,6 +1392,7 @@ int command_stop(int argc, char *argv[]) {
             goto cleanup;
         }
 
+        fprintf(stderr, "will send SIGTERM to service-runner at PID %d\n", runner_pid);
         pid = runner_pid;
     } else if (pidfile_ok) {
         if (kill(service_pid, SIGTERM) != 0) {
@@ -1403,6 +1401,7 @@ int command_stop(int argc, char *argv[]) {
             goto cleanup;
         }
 
+        fprintf(stderr, "will send SIGTERM to %s service at PID %d\n", name, service_pid);
         pid = service_pid;
     } else {
         fprintf(stderr, "*** error: %s is not running\n", name);
@@ -1540,16 +1539,17 @@ int command_status(int argc, char *argv[]) {
             goto cleanup;
     }
 
-    size_t pidfile_runner_size = strlen(pidfile) + strlen(".runner") + 1;
-    pidfile_runner = malloc(pidfile_runner_size);
-    if (pidfile_runner == NULL) {
-        fprintf(stderr, "*** error: malloc: %s\n", strerror(errno));
-        status = 1;
-        goto cleanup;
-    }
+    {
+        size_t pidfile_runner_size = strlen(pidfile) + strlen(".runner") + 1;
+        pidfile_runner = malloc(pidfile_runner_size);
+        if (pidfile_runner == NULL) {
+            fprintf(stderr, "*** error: malloc: %s\n", strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
 
-    if (snprintf(pidfile_runner, pidfile_runner_size, "%s.runner", pidfile) != pidfile_runner_size - 1) {
-        assert(false);
+        int count = snprintf(pidfile_runner, pidfile_runner_size, "%s.runner", pidfile);
+        assert(count >= 0 && (size_t)count == pidfile_runner_size - 1); (void)count;
     }
 
     pid_t runner_pid = 0;
