@@ -52,17 +52,19 @@ extern char **environ;
         "\n"                                                                                                                    \
         "   OPTIONS:\n"                                                                                                         \
         HELP_OPT_PIDFILE                                                                                                        \
+        "                                       Note that a second pidfile with the name FILE.runner is created containing\n"   \
+        "                                       the process ID of the service-runner process itself.\n"                         \
         "       --logfile=FILE, -l FILE         Write service output to FILE. default: /var/log/NAME-%%Y-%%m-%%d.log\n"         \
         "                                       This implements log-rotating based on the file name pattern.\n"                 \
         "                                       See `man strftime` for a description of the pattern language.\n"                \
         "       --user=USER, -u USER            Run service as USER (name or UID).\n"                                           \
         "       --group=GROUP, -g GROUP         Run service as GROUP (name or GID).\n"                                          \
         "       --crash-sleep=SECONDS           Wait SECONDS before restarting service. default: 1\n"                           \
-        "       --crash-report=COMMAND          Run `COMMAND SI_CODE SI_STATUS LOGFILE` if the service crashed.\n"              \
-        "                                       SI_CODE values:\n"                                                              \
-        "                                         EXITED ... service has exited, SI_STATUS is it's exit status\n"               \
-        "                                         KILLED ... service was killed, SI_STATUS is the killing signal\n"             \
-        "                                         DUMPED ... service produced a core dump, SI_STATUS is the killing signal\n"
+        "       --crash-report=COMMAND          Run `COMMAND CODE STATUS LOGFILE` if the service crashed.\n"                    \
+        "                                       CODE values:\n"                                                                 \
+        "                                         EXITED ... service has exited, STATUS is it's exit status\n"                  \
+        "                                         KILLED ... service was killed, STATUS is the killing signal\n"                \
+        "                                         DUMPED ... service produced a core dump, STATUS is the killing signal\n"
 
 #define HELP_CMD_STOP                                                                                                                   \
         "   %s stop <name> [options]\n"                                                                                                 \
@@ -194,6 +196,101 @@ bool is_valid_name(const char *name) {
     }
 
     return true;
+}
+
+size_t dirend(const char *path) {
+    size_t index = strlen(path);
+    if (index == 0) {
+        return 0;
+    }
+
+    // select last character
+    -- index;
+
+    // skip trailing '/'
+    while (index > 0 && path[index] == '/') {
+        -- index;
+    }
+
+    // skip filename
+    while (index > 0 && path[index] != '/') {
+        -- index;
+    }
+
+    // skip doubled '/'
+    while (index > 0 && path[index - 1] == '/') {
+        -- index;
+    }
+
+    return index;
+}
+
+char *abspath(const char *path) {
+    char *tmp = realpath(path, NULL);
+    if (tmp != NULL || errno != ENOENT) {
+        return tmp;
+    }
+
+    tmp = strdup(path);
+    if (tmp == NULL) {
+        return NULL;
+    }
+
+    size_t path_len = strlen(tmp);
+    size_t prev_index = path_len;
+    char prev_char = 0;
+    for (;;) {
+        size_t index = dirend(tmp);
+        tmp[prev_index] = prev_char;
+
+        if (index == 0) {
+            char curdir[PATH_MAX];
+            if (getcwd(curdir, sizeof(curdir)) == NULL) {
+                free(tmp);
+                return NULL;
+            }
+
+            size_t bufsize = strlen(curdir) + path_len + 2;
+            char *buf = malloc(bufsize);
+            if (buf == NULL) {
+                free(tmp);
+                return NULL;
+            }
+            int count = snprintf(buf, bufsize, "%s/%s", curdir, path);
+            assert(count >= 0 && (size_t)count == bufsize - 1);
+            free(tmp);
+            return buf;
+        }
+
+        prev_char = tmp[index];
+        tmp[index] = 0;
+
+        char *parent = realpath(tmp, NULL);
+        if (parent != NULL) {
+            while (path[index] == '/') {
+                ++ index;
+            }
+            size_t bufsize = strlen(parent) + path_len - index + 2;
+
+            char *buf = malloc(bufsize);
+            if (buf == NULL) {
+                free(parent);
+                free(tmp);
+                return NULL;
+            }
+            int count = snprintf(buf, bufsize, "%s/%s", parent, path + index);
+            assert(count >= 0 && (size_t)count == bufsize - 1);
+            free(parent);
+            free(tmp);
+            return buf;
+        } else if (errno == ENOENT) {
+            // keep going up
+            prev_index = index;
+        } else {
+            free(tmp);
+            return NULL;
+        }
+    }
 }
 
 bool can_execute(const char *filename, uid_t uid, gid_t gid) {
@@ -434,6 +531,73 @@ void forward_signal(int sig) {
     }
 }
 
+enum AbsPathResult {
+    ABS_PATH_ERR,
+    ABS_PATH_ORIG,
+    ABS_PATH_NEW,
+};
+
+enum AbsPathResult get_pidfile_abspath(char **pidfile_ptr, const char *name) {
+    char *pidfile = *pidfile_ptr;
+    if (pidfile == NULL) {
+        size_t bufsize = strlen("/var/run/.pid") + strlen(name) + 1;
+        char *buf = malloc(bufsize);
+        if (buf == NULL) {
+            fprintf(stderr, "*** error: malloc(%zu): %s\n", bufsize, strerror(errno));
+            return ABS_PATH_ERR;
+        }
+
+        if (snprintf(buf, bufsize, "/var/run/%s.pid", name) != bufsize - 1) {
+            assert(false);
+        }
+
+        *pidfile_ptr = buf;
+        return ABS_PATH_NEW;
+    } else if (pidfile[0] != '/') {
+        char *buf = abspath(pidfile);
+        if (buf == NULL) {
+            fprintf(stderr, "*** error: abspath(\"%s\"): %s\n", pidfile, strerror(errno));
+            return ABS_PATH_ERR;
+        }
+
+        *pidfile_ptr = buf;
+        return ABS_PATH_NEW;
+    } else {
+        return ABS_PATH_ORIG;
+    }
+}
+
+enum AbsPathResult get_logfile_abspath(char **logfile_ptr, const char *name) {
+    char *logfile = *logfile_ptr;
+    if (logfile == NULL) {
+        size_t bufsize = strlen("/var/log/-%Y-%m-%d.log") + strlen(name) + 1;
+        char *buf = malloc(bufsize);
+        if (buf == NULL) {
+            fprintf(stderr, "*** error: malloc(%zu): %s\n", bufsize, strerror(errno));
+            return ABS_PATH_ERR;
+        }
+
+        if (snprintf(buf, bufsize, "/var/log/%s-%%Y-%%m-%%d.log", name) != bufsize - 1) {
+            assert(false);
+        }
+
+        *logfile_ptr = buf;
+        return ABS_PATH_NEW;
+    } else if (logfile[0] != '/') {
+        char *buf = abspath(logfile);
+        if (buf == NULL) {
+            fprintf(stderr, "*** error: abspath(\"%s\"): %s\n", logfile, strerror(errno));
+            return ABS_PATH_ERR;
+        }
+
+        *logfile_ptr = buf;
+        return ABS_PATH_NEW;
+    } else {
+        return ABS_PATH_ORIG;
+    }
+
+}
+
 int command_start(int argc, char *argv[]) {
     if (argc < 2) {
         return 1;
@@ -499,6 +663,9 @@ int command_start(int argc, char *argv[]) {
         }
     }
 
+    // because of skipped first argument:
+    ++ optind;
+
     int count = argc - optind;
     if (count < 2) {
         fprintf(stderr, "*** error: not enough arguments\n");
@@ -535,11 +702,6 @@ int command_start(int argc, char *argv[]) {
     uid_t xuid = uid == 0 ? selfuid : uid;
     gid_t xgid = gid == 0 ? selfgid : gid;
 
-    if (command[0] != '/') {
-        fprintf(stderr, "*** error: command needs to be an absolute path: %s\n", command);
-        return 1;
-    }
-
     if (!can_execute(command, xuid, xgid)) {
         fprintf(stderr, "*** error: file not found or not executable: %s\n", command);
         return 1;
@@ -551,55 +713,53 @@ int command_start(int argc, char *argv[]) {
     }
 
     int status = 0;
-    bool auto_pidfile = false;
-    bool auto_logfile = false;
-    char *pidfile_runner = NULL;
-    char logfile_path[BUFSIZ];
-    char new_logfile_path[BUFSIZ];
     int logfile_fd = -1;
+
+    bool free_pidfile = false;
+    bool free_logfile = false;
+    bool free_command = false;
     bool cleanup_pidfiles = false;
 
+    char *pidfile_runner = NULL;
+    char logfile_path[PATH_MAX];
+    char new_logfile_path[PATH_MAX];
 
-    if (pidfile == NULL) {
-        auto_pidfile = true;
-
-        size_t bufsize = strlen("/var/run/.pid") + strlen(name) + 1;
-        char *buf = malloc(bufsize);
+    if (command[0] != '/') {
+        char *buf = abspath(command);
         if (buf == NULL) {
-            fprintf(stderr, "*** error: malloc(%zu): %s\n", bufsize, strerror(errno));
+            fprintf(stderr, "*** error: abspath(\"%s\"): %s\n", command, strerror(errno));
             status = 1;
             goto cleanup;
         }
 
-        if (snprintf(buf, bufsize, "/var/run/%s.pid", name) != bufsize) {
-            assert(false);
-        }
-        pidfile = buf;
-    } else if (pidfile[0] != '/') {
-        fprintf(stderr, "*** error: pidfile needs to be an absolute path: %s\n", pidfile);
-        status = 1;
-        goto cleanup;
+        command = buf;
+        free_command = true;
     }
 
-    if (logfile == NULL) {
-        auto_logfile = true;
+    switch (get_pidfile_abspath((char**)&pidfile, name)) {
+        case ABS_PATH_NEW:
+            free_pidfile = true;
+            break;
 
-        size_t bufsize = strlen("/var/log/-%Y-%m-%d.log") + strlen(name) + 1;
-        char *buf = malloc(bufsize);
-        if (buf == NULL) {
-            fprintf(stderr, "*** error: malloc(%zu): %s\n", bufsize, strerror(errno));
+        case ABS_PATH_ORIG:
+            break;
+
+        case ABS_PATH_ERR:
             status = 1;
             goto cleanup;
-        }
+    }
 
-        if (snprintf(buf, bufsize, "/var/log/%s-%%Y-%%m-%%d.log", name) != bufsize) {
-            assert(false);
-        }
-        logfile = buf;
-    } else if (logfile[0] != '/') {
-        fprintf(stderr, "*** error: logfile needs to be an absolute path: %s\n", logfile);
-        status = 1;
-        goto cleanup;
+    switch (get_logfile_abspath((char**)&logfile, name)) {
+        case ABS_PATH_NEW:
+            free_logfile = true;
+            break;
+
+        case ABS_PATH_ORIG:
+            break;
+
+        case ABS_PATH_ERR:
+            status = 1;
+            goto cleanup;
     }
 
     size_t pidfile_runner_size = strlen(pidfile) + strlen(".runner") + 1;
@@ -610,7 +770,7 @@ int command_start(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    if (snprintf(pidfile_runner, pidfile_runner_size, "%s.runner", pidfile) != pidfile_runner_size) {
+    if (snprintf(pidfile_runner, pidfile_runner_size, "%s.runner", pidfile) != pidfile_runner_size - 1) {
         assert(false);
     }
 
@@ -1031,7 +1191,7 @@ int command_start(int argc, char *argv[]) {
                                 char status_str[24];
 
                                 int result = snprintf(status_str, sizeof(status_str), "%d", siginfo.si_status);
-                                assert(result > 0 && result < sizeof(status_str));
+                                assert(result > 0 && result <= sizeof(status_str));
 
                                 pid_t report_pid = 0;
                                 result = posix_spawn(&report_pid, crash_report, NULL, NULL,
@@ -1113,12 +1273,16 @@ cleanup:
 
     free(pidfile_runner);
 
-    if (auto_pidfile) {
+    if (free_pidfile) {
         free((char*)pidfile);
     }
 
-    if (auto_logfile) {
+    if (free_logfile) {
         free((char*)logfile);
+    }
+
+    if (free_command) {
+        free((char*)command);
     }
 
     if (logfile_fd != -1) {
@@ -1178,6 +1342,9 @@ int command_stop(int argc, char *argv[]) {
         }
     }
 
+    // because of skipped first argument:
+    ++ optind;
+
     int count = argc - optind;
     if (count != 1) {
         fprintf(stderr, "*** error: illegal number of arguments\n");
@@ -1188,28 +1355,20 @@ int command_stop(int argc, char *argv[]) {
     const char *name = argv[optind ++];
 
     int status = 0;
-    bool auto_pidfile = false;
+    bool free_pidfile = false;
     char *pidfile_runner = NULL;
 
-    if (pidfile == NULL) {
-        auto_pidfile = true;
+    switch (get_pidfile_abspath((char**)&pidfile, name)) {
+        case ABS_PATH_NEW:
+            free_pidfile = true;
+            break;
 
-        size_t bufsize = strlen("/var/run/.pid") + strlen(name) + 1;
-        char *buf = malloc(bufsize);
-        if (buf == NULL) {
-            fprintf(stderr, "*** error: malloc(%zu): %s\n", bufsize, strerror(errno));
+        case ABS_PATH_ORIG:
+            break;
+
+        case ABS_PATH_ERR:
             status = 1;
             goto cleanup;
-        }
-
-        if (snprintf(buf, bufsize, "/var/run/%s.pid", name) != bufsize) {
-            assert(false);
-        }
-        pidfile = buf;
-    } else if (pidfile[0] != '/') {
-        fprintf(stderr, "*** error: pidfile needs to be an absolute path: %s\n", pidfile);
-        status = 1;
-        goto cleanup;
     }
 
     size_t pidfile_runner_size = strlen(pidfile) + strlen(".runner") + 1;
@@ -1220,7 +1379,7 @@ int command_stop(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    if (snprintf(pidfile_runner, pidfile_runner_size, "%s.runner", pidfile) != pidfile_runner_size) {
+    if (snprintf(pidfile_runner, pidfile_runner_size, "%s.runner", pidfile) != pidfile_runner_size - 1) {
         assert(false);
     }
 
@@ -1315,7 +1474,7 @@ int command_stop(int argc, char *argv[]) {
     }
 
 cleanup:
-    if (auto_pidfile) {
+    if (free_pidfile) {
         free((char*)pidfile);
     }
 
@@ -1352,6 +1511,9 @@ int command_status(int argc, char *argv[]) {
         }
     }
 
+    // because of skipped first argument:
+    ++ optind;
+
     int count = argc - optind;
     if (count != 1) {
         fprintf(stderr, "*** error: illegal number of arguments\n");
@@ -1362,28 +1524,20 @@ int command_status(int argc, char *argv[]) {
     const char *name = argv[optind ++];
 
     int status = 0;
-    bool auto_pidfile = false;
+    bool free_pidfile = false;
     char *pidfile_runner = NULL;
 
-    if (pidfile == NULL) {
-        auto_pidfile = true;
+    switch (get_pidfile_abspath((char**)&pidfile, name)) {
+        case ABS_PATH_NEW:
+            free_pidfile = true;
+            break;
 
-        size_t bufsize = strlen("/var/run/.pid") + strlen(name) + 1;
-        char *buf = malloc(bufsize);
-        if (buf == NULL) {
-            fprintf(stderr, "*** error: malloc(%zu): %s\n", bufsize, strerror(errno));
+        case ABS_PATH_ORIG:
+            break;
+
+        case ABS_PATH_ERR:
             status = 1;
             goto cleanup;
-        }
-
-        if (snprintf(buf, bufsize, "/var/run/%s.pid", name) != bufsize) {
-            assert(false);
-        }
-        pidfile = buf;
-    } else if (pidfile[0] != '/') {
-        fprintf(stderr, "*** error: pidfile needs to be an absolute path: %s\n", pidfile);
-        status = 1;
-        goto cleanup;
     }
 
     size_t pidfile_runner_size = strlen(pidfile) + strlen(".runner") + 1;
@@ -1394,7 +1548,7 @@ int command_status(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    if (snprintf(pidfile_runner, pidfile_runner_size, "%s.runner", pidfile) != pidfile_runner_size) {
+    if (snprintf(pidfile_runner, pidfile_runner_size, "%s.runner", pidfile) != pidfile_runner_size - 1) {
         assert(false);
     }
 
@@ -1432,7 +1586,7 @@ int command_status(int argc, char *argv[]) {
 cleanup:
     free(pidfile_runner);
 
-    if (auto_pidfile) {
+    if (free_pidfile) {
         free((char*)pidfile);
     }
 
