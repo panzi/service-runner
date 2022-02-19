@@ -2,14 +2,16 @@
 
 set -eo pipefail
 
+name=$(basename "$0" .sh)
+
 function handle_sigterm () {
-    echo "received SIGTERM, exiting..."
+    printf '[%(%Y-%m-%d %H:%M:%S%z)T] %s received SIGTERM, exiting...\n' -1 "$name"
     exit
 }
 
 trap handle_sigterm SIGTERM
 
-echo "$0 started"
+printf '[%(%Y-%m-%d %H:%M:%S%z)T] %s started\n' -1 "$name"
 sleep 5
-echo "$0: crashing now with SIGSEGV...">&2
+printf '[%(%Y-%m-%d %H:%M:%S%z)T] %s: crashing now with SIGSEGV...\n' -1 "$name">&2
 kill -SIGSEGV $$

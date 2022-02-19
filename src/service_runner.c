@@ -60,7 +60,7 @@ extern char **environ;
         "       --user=USER, -u USER            Run service as USER (name or UID).\n"                                           \
         "       --group=GROUP, -g GROUP         Run service as GROUP (name or GID).\n"                                          \
         "       --crash-sleep=SECONDS           Wait SECONDS before restarting service. default: 1\n"                           \
-        "       --crash-report=COMMAND          Run `COMMAND CODE STATUS LOGFILE` if the service crashed.\n"                    \
+        "       --crash-report=COMMAND          Run `COMMAND NAME CODE STATUS LOGFILE` if the service crashed.\n"               \
         "                                       CODE values:\n"                                                                 \
         "                                         EXITED ... service has exited, STATUS is it's exit status\n"                  \
         "                                         KILLED ... service was killed, STATUS is the killing signal\n"                \
@@ -1204,7 +1204,7 @@ int command_start(int argc, char *argv[]) {
 
                                 pid_t report_pid = 0;
                                 result = posix_spawn(&report_pid, crash_report, NULL, NULL,
-                                    (char*[]){ (char*)crash_report, (char*)code_str, param_str, logfile_path, NULL },
+                                    (char*[]){ (char*)crash_report, (char*)name, (char*)code_str, param_str, logfile_path, NULL },
                                     environ);
 
                                 if (result != 0) {
