@@ -1165,10 +1165,11 @@ int command_start(int argc, char *argv[]) {
                             param = WTERMSIG(service_status);
                             if (WCOREDUMP(service_status)) {
                                 code_str = "DUMPED";
-                                fprintf(stderr, "service-runner: *** error: %s was killed by signal %d\n", name, param);
+                                fprintf(stderr, "service-runner: *** error: %s was killed by signal %d and dumped core\n", name, param);
+                                crash = true;
                             } else {
                                 code_str = "KILLED";
-                                fprintf(stderr, "service-runner: *** error: %s was killed by signal %d and dumped core\n", name, param);
+                                fprintf(stderr, "service-runner: *** error: %s was killed by signal %d\n", name, param);
 
                                 switch (param) {
                                     case SIGTERM:
