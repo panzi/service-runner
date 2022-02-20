@@ -563,7 +563,7 @@ int command_start(int argc, char *argv[]) {
         logfile_path = logfile;
     }
 
-    logfile_fd = open(logfile_path, O_CREAT | O_WRONLY | O_CLOEXEC, 0644);
+    logfile_fd = open(logfile_path, O_CREAT | O_WRONLY | O_CLOEXEC | O_APPEND, 0644);
     if (logfile_fd == -1) {
         fprintf(stderr, "*** error: cannot open logfile: %s: %s\n", logfile_path, strerror(errno));
         status = 1;
@@ -825,7 +825,7 @@ int command_start(int argc, char *argv[]) {
                         }
 
                         if (strcmp(new_logfile_path_buf, logfile_path_buf) != 0) {
-                            int new_logfile_fd = open(new_logfile_path_buf, O_CREAT | O_WRONLY | O_CLOEXEC, 0644);
+                            int new_logfile_fd = open(new_logfile_path_buf, O_CREAT | O_WRONLY | O_CLOEXEC | O_APPEND, 0644);
                             if (logfile_fd == -1) {
                                 fprintf(stderr, "*** error: (parent) cannot open logfile: %s: %s\n", new_logfile_path_buf, strerror(errno));
                             }
