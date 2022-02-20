@@ -1,24 +1,31 @@
+#include <sys/ioctl.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <string.h>
+#include <stdint.h>
+#include <stdbool.h>
 
 #include "service_runner.h"
+
+#define WS_COL_DEFAULT 80
+#define WS_ROW_DEFAULT 80
+#define WS_XPIXEL_DEFAULT (80 *  8)
+#define WS_YPIXEL_DEFAULT (40 * 14)
 
 #define HELP_OPT_PIDFILE \
         "       --pidfile=FILE, -p FILE         Use FILE as the pidfile. default: /var/run/NAME.pid\n"
 
-#define HELP_CMD_START                                                                                                          \
-        "   %s start <name> [options] [--] <command> [argument...]\n"                                                           \
+#define HELP_CMD_START_HDR                                                                                                      \
+        "   %s start <name> [options] [--] <command> [argument...]\n"
+#define HELP_CMD_START_DESCR \
         "\n"                                                                                                                    \
-        "       Start <command> as service <name>. Does nothing if the service is already running.\n"                           \
-        "       This automatically deamonizes, handles PID- and log-files, and restarts on crash.\n"                            \
+        "       Start <command> as service <name>. Does nothing if the service is already running. This automatically deamonizes, handles PID- and log-files, and restarts on crash.\n" \
         "\n"                                                                                                                    \
         "   OPTIONS:\n"                                                                                                         \
         HELP_OPT_PIDFILE                                                                                                        \
-        "                                       Note that a second pidfile with the name FILE.runner is created\n"              \
-        "                                       containing the process ID of the service-runner process itself.\n"              \
+        "                                       Note that a second pidfile with the name FILE.runner is created containing the process ID of the service-runner process itself.\n" \
         "       --logfile=FILE, -l FILE         Write service output to FILE. default: /var/log/NAME-%%Y-%%m-%%d.log\n"         \
-        "                                       This implements log-rotating based on the file name pattern.\n"                 \
-        "                                       See `man strftime` for a description of the pattern language.\n"                \
+        "                                       This implements log-rotating based on the file name pattern. See `man strftime` for a description of the pattern language.\n" \
         "       --user=USER, -u USER            Run service as USER (name or UID).\n"                                           \
         "       --group=GROUP, -g GROUP         Run service as GROUP (name or GID).\n"                                          \
         "       --crash-sleep=SECONDS           Wait SECONDS before restarting service. default: 1\n"                           \
@@ -28,33 +35,340 @@
         "                                         KILLED ... service was killed, STATUS is the killing signal\n"                \
         "                                         DUMPED ... service core dumped, STATUS is the killing signal\n"
 
-#define HELP_CMD_STOP                                                                                               \
-        "   %s stop <name> [options]\n"                                                                             \
+#define HELP_CMD_STOP_HDR                                                                                           \
+        "   %s stop <name> [options]\n"
+#define HELP_CMD_STOP_DESCR                                                                                         \
         "\n"                                                                                                        \
-        "       Stop service <name>. If --pidfile was passed to the corresponding start command it must be\n"       \
-        "       passed with the same argument here again.\n"                                                        \
+        "       Stop service <name>. If --pidfile was passed to the corresponding start command it must be passed with the same argument here again.\n" \
         "\n"                                                                                                        \
         "   OPTIONS:\n"                                                                                             \
         HELP_OPT_PIDFILE                                                                                            \
-        "       --shutdown-timeout=SECONDS      If the service doesn't shut down after SECONDS after sending\n"     \
-        "                                       SIGTERM send SIGKILL. 0 means no timeout, just wait forever.\n"     \
-        "                                       default: 0\n"
+        "       --shutdown-timeout=SECONDS      If the service doesn't shut down after SECONDS after sending SIGTERM send SIGKILL. 0 means no timeout, just wait forever. default: 0\n"
 
-#define HELP_CMD_STATUS                                                 \
-        "   %s status <name> [options]\n"                               \
+#define HELP_CMD_STATUS_HDR                                             \
+        "   %s status <name> [options]\n"
+#define HELP_CMD_STATUS_DESCR                                           \
         "\n"                                                            \
         "       Print some status information about service <name>.\n"  \
         "\n"                                                            \
         "   OPTIONS:\n"                                                 \
         HELP_OPT_PIDFILE
 
-#define HELP_CMD_HELP               \
-        "   %s help [command]\n"    \
+#define HELP_CMD_HELP_HDR           \
+        "   %s help [command]\n"
+#define HELP_CMD_HELP_DESCR         \
         "\n"                        \
         "       Print help message to <command>. If no command is passed, prints help message to all commands.\n"
 
 const char *get_progname(int argc, char *argv[]) {
     return argc > 0 ? argv[0] : "service_runner";
+}
+
+// only can handle valid UTF-8
+#define DECODE_UTF8(STR, SIZE, ...) \
+    for (size_t index = 0; index < (SIZE);) { \
+        uint8_t byte1 = (STR)[index ++]; \
+        if (byte1 < 0x80) { \
+            uint32_t codepoint = byte1; \
+            (void)codepoint; \
+            __VA_ARGS__; \
+        } else if (byte1 < 0xE0) { \
+            if (index < (SIZE)) { \
+                uint8_t byte2 = (STR)[index ++]; \
+                uint32_t codepoint = (uint32_t)(byte1 & 0x1F) << 6 | \
+                                     (uint32_t)(byte2 & 0x3F); \
+                (void)codepoint; \
+                __VA_ARGS__; \
+            } /* else unexpected end of multibyte sequence, ignored */ \
+        } else if (byte1 < 0xF0) { \
+            if (index + 1 < (SIZE)) { \
+                uint8_t byte2 = (STR)[index ++]; \
+                uint8_t byte3 = (STR)[index ++]; \
+                \
+                uint32_t codepoint = (uint32_t)(byte1 & 0x0F) << 12 | \
+                                     (uint32_t)(byte2 & 0x3F) <<  6 | \
+                                     (uint32_t)(byte3 & 0x3F); \
+                (void)codepoint; \
+                __VA_ARGS__; \
+            } /* else unexpected end of multibyte sequence, ignored */ \
+        } else if (byte1 < 0xF8) { \
+            if (index + 2 < (SIZE)) { \
+                uint8_t byte2 = (STR)[index ++]; \
+                uint8_t byte3 = (STR)[index ++]; \
+                uint8_t byte4 = (STR)[index ++]; \
+                \
+                uint32_t codepoint = (uint32_t)(byte1 & 0x07) << 18 | \
+                                     (uint32_t)(byte2 & 0x3F) << 12 | \
+                                     (uint32_t)(byte3 & 0x3F) <<  6 | \
+                                     (uint32_t)(byte4 & 0x3F); \
+                (void)codepoint; \
+                __VA_ARGS__; \
+            } /* else unexpected end of multibyte sequence, ignored */ \
+        } /* else illegal byte sequence, ignored */ \
+    }
+
+#define DECODE_UTF8Z(STR, ...) \
+    size_t codepoint_index = 0; \
+    (void) codepoint_index; \
+    for (size_t index = 0; (STR)[index];) { \
+        codepoint_index = index; \
+        uint8_t byte1 = (STR)[index ++]; \
+        if (byte1 < 0x80) { \
+            uint32_t codepoint = byte1; \
+            (void)codepoint; \
+            __VA_ARGS__; \
+        } else if (byte1 < 0xE0) { \
+            if ((STR)[index]) { \
+                uint8_t byte2 = (STR)[index ++]; \
+                uint32_t codepoint = (uint32_t)(byte1 & 0x1F) << 6 | \
+                                     (uint32_t)(byte2 & 0x3F); \
+                (void)codepoint; \
+                __VA_ARGS__; \
+            } /* else unexpected end of multibyte sequence, ignored */ \
+        } else if (byte1 < 0xF0) { \
+            if ((STR)[index] && (STR)[index + 1]) { \
+                uint8_t byte2 = (STR)[index ++]; \
+                uint8_t byte3 = (STR)[index ++]; \
+                \
+                uint32_t codepoint = (uint32_t)(byte1 & 0x0F) << 12 | \
+                                     (uint32_t)(byte2 & 0x3F) <<  6 | \
+                                     (uint32_t)(byte3 & 0x3F); \
+                (void)codepoint; \
+                __VA_ARGS__; \
+            } /* else unexpected end of multibyte sequence, ignored */ \
+        } else if (byte1 < 0xF8) { \
+            if ((STR)[index] && (STR)[index + 1] && (STR)[index + 2]) { \
+                uint8_t byte2 = (STR)[index ++]; \
+                uint8_t byte3 = (STR)[index ++]; \
+                uint8_t byte4 = (STR)[index ++]; \
+                \
+                uint32_t codepoint = (uint32_t)(byte1 & 0x07) << 18 | \
+                                     (uint32_t)(byte2 & 0x3F) << 12 | \
+                                     (uint32_t)(byte3 & 0x3F) <<  6 | \
+                                     (uint32_t)(byte4 & 0x3F); \
+                (void)codepoint; \
+                __VA_ARGS__; \
+            } /* else unexpected end of multibyte sequence, ignored */ \
+        } /* else illegal byte sequence, ignored */ \
+    }
+
+bool is_breaking_space(uint32_t codepoint) {
+    return codepoint == ' ' ||
+           (codepoint >= 0x09 && codepoint <= 0x0D) ||
+           codepoint == 0x2028 ||
+           codepoint == 0x2029 ||
+           (codepoint >= 0x2000 && codepoint <= 0x200A) ||
+           codepoint == 0x205F ||
+           codepoint == 0x3000;
+}
+
+size_t find_word_end(const char *text, size_t text_index) {
+    const char *str = text + text_index;
+    DECODE_UTF8Z(str, {
+        if (is_breaking_space(codepoint)) {
+            return text_index + codepoint_index;
+        }
+    });
+
+    return text_index + codepoint_index;
+}
+
+size_t find_word_start(const char *text, size_t text_index) {
+    const char *str = text + text_index;
+    DECODE_UTF8Z(str, {
+        if (!is_breaking_space(codepoint) || codepoint == '\n') {
+            return text_index + codepoint_index;
+        }
+    });
+
+    return text_index + codepoint_index;
+}
+
+
+// just something, probably not very correct
+size_t count_graphemes(const char *text, size_t len) {
+    size_t count = 0;
+    DECODE_UTF8(text, len, {
+        if (codepoint == '\t') {
+            count += 8; // XXX: not how tabs work
+        } else if (codepoint >= ' ' && codepoint <= '~') {
+            // ASCII fast path
+            count += 1;
+        } else if (
+            // control characters
+            (codepoint >= 0x00 && codepoint <= 0x19) ||
+            (codepoint >= 0x1A && codepoint <= 0x1F) ||
+            (codepoint >= 0x7F && codepoint <= 0x9F) ||
+
+            // zero width-space
+            codepoint == 0x200B ||
+
+            // Combining Diacritical Marks for Symbols
+            (codepoint >= 0x20D0 && codepoint <= 0x20FF) ||
+
+            // Combining Half Marks
+            (codepoint >= 0xFE20 && codepoint <= 0xFE2F) ||
+
+            // hebrew diacritics
+            (codepoint >= 0x0591 && codepoint <= 0x05C7) ||
+
+            // arabic diacritics
+            (codepoint >= 0x0610 && codepoint <= 0x06ED) ||
+
+            // TODO: many more here: https://www.compart.com/en/unicode/category/Mn
+
+            // combining diacritic marks
+            (codepoint >= 0x0300 && codepoint <= 0x036F) ||
+
+            // line separator, paragraph separator
+            (codepoint >= 0x2028 && codepoint <= 0x2029) ||
+
+            // Combining Diacritical Marks Extended
+            (codepoint >= 0x1AB0 && codepoint <= 0x1AFF) ||
+
+            // Combining Diacritical Marks Supplement
+            (codepoint >= 0x1DC0 && codepoint <= 0x1DFF) ||
+
+            // Combining Diacritical Marks for Symbols
+            (codepoint >= 0x20D0 && codepoint <= 0x20FF) ||
+
+            // Combining Half Marks
+            (codepoint >= 0xFE20 && codepoint <= 0xFE2F)
+        ) {
+            // zero
+        } else {
+            count += 1;
+        }
+    });
+    // fprintf(stderr, "%3zu graphemes in \"", count);
+    // fwrite(text, len, 1, stderr);
+    // fprintf(stderr, "\"\n");
+    return count;
+}
+
+bool is_all_dots(const char *text, size_t len) {
+    if (len < 3) {
+        return false;
+    }
+
+    for (size_t index = 0; index < len; ++ index) {
+        if (text[index] != '.') {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * @brief Prints a formatted plain text, wrapping lines in a way to keep some of the formatting.
+ * 
+ * It detects indentation consisting of non-breaking spaces
+ * It indents wrapped lines to:
+ * - Existing indentation of non-breaking spaces.
+ *   If the exiting indentation alone is longer than linelen it is set to zero.
+ * - Indentation marks consisting of two spaces '  ' (two U+0020) before non-space.
+ * - Definition list items marked by '<term> ... <definition>' or more dots indent
+ *   to the start of <definition>.
+ * - List items marked by '- <text>' or '* <text>' (a single U+0020 space after '-' or '*')
+ *   indent to the start of <text>.
+ * 
+ * @param fp is the stream to print to
+ * @param text is the text to print
+ * @param linelen is the maximum length of a line in graphemes
+ */
+void print_wrapped_text(FILE *fp, const char *text, size_t linelen) {
+    size_t index = find_word_start(text, 0);
+    size_t indent = count_graphemes(text, index);
+    size_t current_linelen = indent;
+    size_t line_start = 0;
+    bool wrapped = false;
+    bool was_all_dots = false;
+    // fprintf(stderr, "new indent width (indent): %zu\n", indent);
+
+    if (indent >= linelen) {
+        indent = 0;
+    } else {
+        fwrite(text, index, 1, fp);
+    }
+
+    for (;;) {
+        char ch = text[index];
+        if (!ch) {
+            break;
+        }
+
+        if (ch == '\n') {
+            fputc('\n', fp);
+            indent = 0;
+            ++ index;
+            line_start = index;
+            size_t next_index = find_word_start(text, index);
+            indent = count_graphemes(text + index, next_index - index);
+            if (indent >= linelen) {
+                indent = 0;
+            } else {
+                fwrite(text + index, next_index - index, 1, fp);
+            }
+            // fprintf(stderr, "new indent width (indent): %zu\n", indent);
+            current_linelen = indent;
+            index = next_index;
+            wrapped = false;
+            was_all_dots = false;
+        } else {
+            size_t word_end = find_word_end(text, index);
+            size_t word_graphemes = count_graphemes(text + index, word_end - index);
+            if (current_linelen + word_graphemes > linelen && index != line_start) {
+                fputc('\n', fp);
+                // fprintf(stderr, "do indent by %zu spaces\n", indent);
+                for (size_t do_indent = 0; do_indent < indent; ++ do_indent) {
+                    fputc(' ', fp);
+                }
+                current_linelen = indent;
+                wrapped = true;
+            }
+
+            fwrite(text + index, word_end - index, 1, fp);
+
+            if (!wrapped) {
+                char ch;
+                if (current_linelen == indent && ((ch = text[index]) == '-' || ch == '*') && (word_end - index) == 1) {
+                    indent = current_linelen + 2;
+                    // fprintf(stderr, "new indent width (list): %zu\n", indent);
+                } else if (index >= 2 && text[index - 2] == ' ' && text[index - 1] == ' ') {
+                    // indentation mark
+                    indent = current_linelen;
+                    // fprintf(stderr, "new indent width (mark): %zu\n", indent);
+                } else if (was_all_dots) {
+                    // definition list item
+                    indent = current_linelen;
+                    // fprintf(stderr, "new indent width (def): %zu\n", indent);
+                }
+
+                was_all_dots = is_all_dots(text + index, word_end - index);
+            }
+            current_linelen += word_graphemes;
+
+            index = find_word_start(text, word_end);
+
+            size_t space_graphemes = count_graphemes(text + word_end, index - word_end);
+            if (current_linelen + space_graphemes >= linelen) {
+                char ch = text[index];
+                if (ch != '\n' && ch != 0) {
+                    fputc('\n', fp);
+                    // fprintf(stderr, "do indent by %zu spaces\n", indent);
+                    for (size_t do_indent = 0; do_indent < indent; ++ do_indent) {
+                        fputc(' ', fp);
+                    }
+                    current_linelen = indent;
+                    wrapped = true;
+                }
+            } else {
+                fwrite(text + word_end, index - word_end, 1, fp);
+                current_linelen += space_graphemes;
+            }
+        }
+    }
 }
 
 void short_usage(int argc, char *argv[]) {
@@ -68,19 +382,39 @@ void short_usage(int argc, char *argv[]) {
 
 void usage(int argc, char *argv[]) {
     short_usage(argc, argv);
+    
     const char *progname = get_progname(argc, argv);
-    printf(
+    struct winsize wsize = {
+        .ws_col = WS_COL_DEFAULT,
+        .ws_row = WS_ROW_DEFAULT,
+        .ws_xpixel = WS_XPIXEL_DEFAULT,
+        .ws_ypixel = WS_YPIXEL_DEFAULT,
+    };
+    ioctl(STDOUT_FILENO, TIOCGWINSZ, &wsize);
+
+    print_wrapped_text(
+        stdout,
         "\n"
         "COMMANDS:\n"
-        "\n"
-    );
-    printf(HELP_CMD_START  "\n", progname);
-    printf(HELP_CMD_STOP   "\n", progname);
-    printf(HELP_CMD_STATUS "\n", progname);
-    printf(HELP_CMD_HELP   "\n", progname);
-    printf(
+        "\n", wsize.ws_col);
+
+    printf(HELP_CMD_START_HDR, progname);
+    print_wrapped_text(stdout, HELP_CMD_START_DESCR "\n", wsize.ws_col);
+
+    printf(HELP_CMD_STOP_HDR, progname);
+    print_wrapped_text(stdout, HELP_CMD_STOP_DESCR "\n", wsize.ws_col);
+
+    printf(HELP_CMD_STATUS_HDR, progname);
+    print_wrapped_text(stdout, HELP_CMD_STATUS_DESCR "\n", wsize.ws_col);
+
+    printf(HELP_CMD_HELP_HDR, progname);
+    print_wrapped_text(stdout, HELP_CMD_HELP_DESCR "\n", wsize.ws_col);
+
+    print_wrapped_text(
+        stdout,
         "(c) 2022 Mathias Panzenböck\n"
-        "GitHub: https://github.com/panzi/service-runner\n"
+        "GitHub: https://github.com/panzi/service-runner\n",
+        wsize.ws_col
     );
 }
 
@@ -101,17 +435,30 @@ int command_help(int argc, char *argv[]) {
     }
 
     const char *command = argv[2];
+    const char *progname = get_progname(argc, argv);
+    struct winsize wsize = {
+        .ws_col = WS_COL_DEFAULT,
+        .ws_row = WS_ROW_DEFAULT,
+        .ws_xpixel = WS_XPIXEL_DEFAULT,
+        .ws_ypixel = WS_YPIXEL_DEFAULT,
+    };
+    ioctl(STDOUT_FILENO, TIOCGWINSZ, &wsize);
+
     if (strcmp(command, "start") == 0) {
-        printf("\n" HELP_CMD_START, get_progname(argc, argv));
+        printf("\n" HELP_CMD_START_HDR, progname);
+        print_wrapped_text(stdout, HELP_CMD_START_DESCR, wsize.ws_col);
         return 0;
     } else if (strcmp(command, "stop") == 0) {
-        printf("\n" HELP_CMD_STOP, get_progname(argc, argv));
+        printf("\n" HELP_CMD_STOP_HDR, progname);
+        print_wrapped_text(stdout, HELP_CMD_STOP_DESCR, wsize.ws_col);
         return 0;
     } else if (strcmp(command, "status") == 0) {
-        printf("\n" HELP_CMD_STATUS, get_progname(argc, argv));
+        printf("\n" HELP_CMD_STATUS_HDR, progname);
+        print_wrapped_text(stdout, HELP_CMD_STATUS_DESCR, wsize.ws_col);
         return 0;
     } else if (strcmp(command, "help") == 0) {
-        printf("\n" HELP_CMD_HELP, get_progname(argc, argv));
+        printf("\n" HELP_CMD_HELP_HDR, progname);
+        print_wrapped_text(stdout, HELP_CMD_HELP_DESCR, wsize.ws_col);
         return 0;
     } else {
         fprintf(stderr, "*** error: illegal command: %s\n", command);
