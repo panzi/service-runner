@@ -722,8 +722,7 @@ int command_start(int argc, char *argv[]) {
     bool cleanup_pidfiles = false;
 
     char *pidfile_runner = NULL;
-    char logfile_path[PATH_MAX];
-    char new_logfile_path[PATH_MAX];
+    char logfile_path_buf[PATH_MAX];
 
     if (command[0] != '/') {
         char *buf = abspath(command);
@@ -813,6 +812,7 @@ int command_start(int argc, char *argv[]) {
     }
 
     const bool do_logrotate = strchr(logfile, '%') != NULL;
+    const char *logfile_path;
 
     if (do_logrotate) {
         time_t now = time(NULL);
@@ -823,31 +823,28 @@ int command_start(int argc, char *argv[]) {
             goto cleanup;
         }
 
-        if (strftime(logfile_path, sizeof(logfile_path), logfile, &local_now) == 0) {
+        if (strftime(logfile_path_buf, sizeof(logfile_path_buf), logfile, &local_now) == 0) {
             fprintf(stderr, "*** error: cannot format logfile \"%s\": %s\n", logfile, strerror(errno));
             status = 1;
             goto cleanup;
         }
 
-        if (!can_read_write(logfile_path, selfuid, selfgid)) {
+        if (!can_read_write(logfile_path_buf, selfuid, selfgid)) {
             fprintf(stderr, "*** error: cannot read and write file: %s\n", logfile);
             status = 1;
             goto cleanup;
         }
 
-        logfile_fd = open(logfile_path, O_CREAT | O_WRONLY | O_CLOEXEC, 0644);
-        if (logfile_fd == -1) {
-            fprintf(stderr, "*** error: cannot open logfile: %s: %s\n", logfile_path, strerror(errno));
-            status = 1;
-            goto cleanup;
-        }
+        logfile_path = logfile_path_buf;
     } else {
-        logfile_fd = open(logfile, O_CREAT | O_WRONLY | O_CLOEXEC, 0644);
-        if (logfile_fd == -1) {
-            fprintf(stderr, "*** error: cannot open logfile: %s: %s\n", logfile, strerror(errno));
-            status = 1;
-            goto cleanup;
-        }
+        logfile_path = logfile;
+    }
+
+    logfile_fd = open(logfile_path, O_CREAT | O_WRONLY | O_CLOEXEC, 0644);
+    if (logfile_fd == -1) {
+        fprintf(stderr, "*** error: cannot open logfile: %s: %s\n", logfile_path, strerror(errno));
+        status = 1;
+        goto cleanup;
     }
 
     pid_t pid = fork();
@@ -1090,22 +1087,24 @@ int command_start(int argc, char *argv[]) {
                         // logrotate
                         time_t now = time(NULL);
                         struct tm local_now;
+                        char new_logfile_path_buf[PATH_MAX];
+
                         if (localtime_r(&now, &local_now) == NULL) {
                             fprintf(stderr, "*** error: (parent) getting local time: %s\n", strerror(errno));
                             status = 1;
                             goto cleanup;
                         }
 
-                        if (strftime(new_logfile_path, sizeof(new_logfile_path), logfile, &local_now) == 0) {
+                        if (strftime(new_logfile_path_buf, sizeof(new_logfile_path_buf), logfile, &local_now) == 0) {
                             fprintf(stderr, "*** error: (parent) cannot format logfile \"%s\": %s\n", logfile, strerror(errno));
                             status = 1;
                             goto cleanup;
                         }
 
-                        if (strcmp(new_logfile_path, logfile_path) != 0) {
-                            int new_logfile_fd = open(new_logfile_path, O_CREAT | O_WRONLY | O_CLOEXEC, 0644);
+                        if (strcmp(new_logfile_path_buf, logfile_path_buf) != 0) {
+                            int new_logfile_fd = open(new_logfile_path_buf, O_CREAT | O_WRONLY | O_CLOEXEC, 0644);
                             if (logfile_fd == -1) {
-                                fprintf(stderr, "*** error: (parent) cannot open logfile: %s: %s\n", new_logfile_path, strerror(errno));
+                                fprintf(stderr, "*** error: (parent) cannot open logfile: %s: %s\n", new_logfile_path_buf, strerror(errno));
                             }
 
                             if (close(logfile_fd) != 0) {
@@ -1121,7 +1120,7 @@ int command_start(int argc, char *argv[]) {
                                 fprintf(stderr, "*** error: (parent) dup2(logfile_fd, STDERR_FILENO): %s\n", strerror(errno));
                             }
 
-                            strcpy(logfile_path, new_logfile_path);
+                            strcpy(logfile_path_buf, new_logfile_path_buf);
                         }
 
                         // handle log messages
@@ -1205,7 +1204,7 @@ int command_start(int argc, char *argv[]) {
 
                                 pid_t report_pid = 0;
                                 result = posix_spawn(&report_pid, crash_report, NULL, NULL,
-                                    (char*[]){ (char*)crash_report, (char*)name, (char*)code_str, param_str, logfile_path, NULL },
+                                    (char*[]){ (char*)crash_report, (char*)name, (char*)code_str, param_str, (char*)logfile_path, NULL },
                                     environ);
 
                                 if (result != 0) {
