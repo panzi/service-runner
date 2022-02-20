@@ -6,7 +6,7 @@
 int main(int argc, char *argv[]) {
     if (argc < 2) {
         fprintf(stderr, "*** error: not enough arguments\n");
-        usage(argc, argv);
+        short_usage(argc, argv);
         return 1;
     }
 
@@ -22,7 +22,7 @@ int main(int argc, char *argv[]) {
         return command_help(argc, argv);
     } else {
         fprintf(stderr, "*** error: illegal command: %s\n", command);
-        usage(argc, argv);
+        short_usage(argc, argv);
         return 1;
     }
 

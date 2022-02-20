@@ -14,8 +14,8 @@
         "\n"                                                                                                                    \
         "   OPTIONS:\n"                                                                                                         \
         HELP_OPT_PIDFILE                                                                                                        \
-        "                                       Note that a second pidfile with the name FILE.runner is created containing\n"   \
-        "                                       the process ID of the service-runner process itself.\n"                         \
+        "                                       Note that a second pidfile with the name FILE.runner is created\n"              \
+        "                                       containing the process ID of the service-runner process itself.\n"              \
         "       --logfile=FILE, -l FILE         Write service output to FILE. default: /var/log/NAME-%%Y-%%m-%%d.log\n"         \
         "                                       This implements log-rotating based on the file name pattern.\n"                 \
         "                                       See `man strftime` for a description of the pattern language.\n"                \
@@ -26,7 +26,7 @@
         "                                       CODE values:\n"                                                                 \
         "                                         EXITED ... service has exited, STATUS is it's exit status\n"                  \
         "                                         KILLED ... service was killed, STATUS is the killing signal\n"                \
-        "                                         DUMPED ... service produced a core dump, STATUS is the killing signal\n"
+        "                                         DUMPED ... service core dumped, STATUS is the killing signal\n"
 
 #define HELP_CMD_STOP                                                                                                                   \
         "   %s stop <name> [options]\n"                                                                                                 \
