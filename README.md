@@ -3,6 +3,9 @@ service-runner
 
 My own service runner thing.
 
+Requires Linux 5.3 or newer because it uses the `pidfd_open()` and
+`pidfd_send_signal()` system calls.
+
 Usage
 -----
 

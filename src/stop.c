@@ -12,8 +12,13 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <limits.h>
+#include <sys/syscall.h>
+#include <poll.h>
 
 #include "service_runner.h"
+
+#define pidfd_open(pid, flags) \
+    syscall(SYS_pidfd_open, (pid), (flags))
 
 enum {
     OPT_STOP_PIDFILE,
@@ -35,7 +40,7 @@ int command_stop(int argc, char *argv[]) {
     int longind = 0;
 
     const char *pidfile = NULL;
-    unsigned int shutdown_timeout = 0;
+    int shutdown_timeout = -1;
 
     for (;;) {
         int opt = getopt_long(argc - 1, argv + 1, "p:", stop_options, &longind);
@@ -50,12 +55,12 @@ int command_stop(int argc, char *argv[]) {
                     case OPT_STOP_SHUTDOWN_TIMEOUT:
                     {
                         char *endptr = NULL;
-                        unsigned long value = strtoul(optarg, &endptr, 10);
-                        if (!*optarg || *endptr || value > UINT_MAX) {
+                        long value = strtol(optarg, &endptr, 10);
+                        if (!*optarg || *endptr || value > (INT_MAX / 1000) || value < -1) {
                             fprintf(stderr, "*** error: illegal value for --shutdown-timeout: %s\n", optarg);
                             return 1;
                         }
-                        shutdown_timeout = value;
+                        shutdown_timeout = value == -1 ? -1 : value * 1000;
                         break;
                     }
                 }
@@ -119,71 +124,46 @@ int command_stop(int argc, char *argv[]) {
     bool pidfile_ok        = read_pidfile(pidfile, &service_pid) == 0;
 
     pid_t pid = 0;
+    const char *which = NULL;
     if (pidfile_runner_ok) {
-        if (kill(runner_pid, SIGTERM) != 0) {
-            fprintf(stderr, "*** error: sending SIGTERM to service-runner PID %d: %s\n", runner_pid, strerror(errno));
-            status = 1;
-            goto cleanup;
-        }
-
-        fprintf(stderr, "will send SIGTERM to service-runner at PID %d\n", runner_pid);
         pid = runner_pid;
+        which = "service-runner";
     } else if (pidfile_ok) {
-        if (kill(service_pid, SIGTERM) != 0) {
-            fprintf(stderr, "*** error: sending SIGTERM to service PID %d: %s\n", service_pid, strerror(errno));
-            status = 1;
-            goto cleanup;
-        }
-
-        fprintf(stderr, "will send SIGTERM to %s service at PID %d\n", name, service_pid);
         pid = service_pid;
+        which = name;
     } else {
         fprintf(stderr, "*** error: %s is not running\n", name);
         goto cleanup;
     }
 
-    struct timespec ts_before;
-    struct timespec ts_after;
-    bool time_ok = true;
-
-    if (shutdown_timeout != 0 && clock_gettime(CLOCK_MONOTONIC, &ts_before) != 0) {
-        time_ok = false;
-        fprintf(stderr, "*** error: clock_gettime(CLOCK_MONOTONIC, &ts_before): %s\n", strerror(errno));
-    }
-
-    bool had_timeout = false;
-    for (size_t count = 0; !had_timeout; ++ count) {
-        if (kill(pid, 0) == 0) {
-            if (shutdown_timeout != 0) {
-                if (time_ok && clock_gettime(CLOCK_MONOTONIC, &ts_after) != 0) {
-                    time_ok = false;
-                    fprintf(stderr, "*** error: clock_gettime(CLOCK_MONOTONIC, &ts_after): %s\n", strerror(errno));
-                }
-
-                if (time_ok) {
-                    time_t secs = ts_after.tv_sec - ts_before.tv_sec;
-                    if (secs > shutdown_timeout) {
-                        had_timeout = true;
-                        break;
-                    }
-                } else if (count > shutdown_timeout) {
-                    had_timeout = true;
-                    break;
-                }
-            }
-            sleep(1);
-        } else if (errno == ESRCH) {
-            break;
-        } else {
-            fprintf(stderr, "*** error: waiting for PID %d: %s\n", pid, strerror(errno));
-            status = 1;
-            goto cleanup;
-        }
-    }
-
-    if (had_timeout) {
-        fprintf(stderr, "*** error: timeout waiting for %s to shutdown, sending SIGKILL\n", name);
+    int pidfd = pidfd_open(pid, 0);
+    if (pidfd == -1) {
+        fprintf(stderr, "*** error: opening %s PID %d as pidfd: %s\n", which, pid, strerror(errno));
         status = 1;
+        goto cleanup;
+    }
+
+    printf("Sending SIGTERM to %s at PID %d...\n", which, pid);
+    if (kill(runner_pid, SIGTERM) != 0) {
+        fprintf(stderr, "*** error: sending SIGTERM to %s PID %d: %s\n", which, pid, strerror(errno));
+        status = 1;
+        goto cleanup;
+    }
+
+    struct pollfd pollfds[] = {
+        { .fd = pidfd, .events = POLLIN, .revents = 0 },
+    };
+
+    int result = poll(pollfds, 1, shutdown_timeout);
+    if (result == -1) {
+        fprintf(stderr, "*** error: waiting for %s PID %d: %s\n", which, pid, strerror(errno));
+        status = 1;
+        goto cleanup;
+    }
+
+    if (result == 0) {
+        // timeout
+        fprintf(stderr, "*** error: timeout waiting for %s to shutdown, sending SIGKILL...\n", name);
 
         if (pidfile_ok) {
             if (kill(service_pid, SIGKILL) != 0) {
@@ -204,9 +184,45 @@ int command_stop(int argc, char *argv[]) {
                 fprintf(stderr, "*** error: unlink(\"%s\"): %s\n", pidfile_runner, strerror(errno));
             }
         }
+
+        status = 1;
+        goto cleanup;
+    }
+
+    if (pollfds[0].revents & POLLERR) {
+        fprintf(stderr, "*** error: waiting for %s PID %d: POLLERR\n", which, pid);
+        status = 1;
+        goto cleanup;
+    }
+
+    if (kill(pid, 0) == 0) {
+        // Sleep half a second to give parent of the process or init
+        // one more chance to wait for it.
+        struct timespec wait_time = {
+            .tv_sec  = 0,
+            .tv_nsec = 500000000,
+        };
+        nanosleep(&wait_time, NULL);
+
+        if (kill(pid, 0) == 0) {
+            fprintf(stderr, "*** error: waiting for %s PID %d: poll() on pidfd returned successful, but process is still running\n", which, pid);
+            fprintf(stderr, "This might mean the process is a zombie and not yet waited for by it's parent/init, maybe because of heavy system load?\n");
+            status = 1;
+            goto cleanup;
+        }
+    }
+
+    if (errno != ESRCH) {
+        fprintf(stderr, "*** error: waiting for %s PID %d: %s\n", which, pid, strerror(errno));
+        status = 1;
+        goto cleanup;
     }
 
 cleanup:
+    if (pidfd != -1) {
+        close(pidfd);
+    }
+
     if (free_pidfile) {
         free((char*)pidfile);
     }

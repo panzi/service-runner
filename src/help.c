@@ -43,7 +43,7 @@
         "\n"                                                                                                        \
         "   OPTIONS:\n"                                                                                             \
         HELP_OPT_PIDFILE                                                                                            \
-        "       --shutdown-timeout=SECONDS      If the service doesn't shut down after SECONDS after sending SIGTERM send SIGKILL. 0 means no timeout, just wait forever. default: 0\n"
+        "       --shutdown-timeout=SECONDS      If the service doesn't shut down after SECONDS after sending SIGTERM send SIGKILL. -1 means no timeout, just wait forever. default: -1\n"
 
 #define HELP_CMD_STATUS_HDR                                             \
         "   %s status <name> [options]\n"
