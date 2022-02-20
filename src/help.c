@@ -28,16 +28,17 @@
         "                                         KILLED ... service was killed, STATUS is the killing signal\n"                \
         "                                         DUMPED ... service core dumped, STATUS is the killing signal\n"
 
-#define HELP_CMD_STOP                                                                                                                   \
-        "   %s stop <name> [options]\n"                                                                                                 \
-        "\n"                                                                                                                            \
-        "       Stop service <name>. If --pidfile was passed to the corresponding start command it must be passed with\n"               \
-        "       the same argument here again.\n"                                                                                        \
-        "\n"                                                                                                                            \
-        "   OPTIONS:\n"                                                                                                                 \
-        HELP_OPT_PIDFILE                                                                                                                \
-        "       --shutdown-timeout=SECONDS      If the service doesn't shut down after SECONDS after sending SIGTERM send SIGKILL.\n"   \
-        "                                       0 means no timeout, just wait forever. default: 0\n"
+#define HELP_CMD_STOP                                                                                               \
+        "   %s stop <name> [options]\n"                                                                             \
+        "\n"                                                                                                        \
+        "       Stop service <name>. If --pidfile was passed to the corresponding start command it must be\n"       \
+        "       passed with the same argument here again.\n"                                                        \
+        "\n"                                                                                                        \
+        "   OPTIONS:\n"                                                                                             \
+        HELP_OPT_PIDFILE                                                                                            \
+        "       --shutdown-timeout=SECONDS      If the service doesn't shut down after SECONDS after sending\n"     \
+        "                                       SIGTERM send SIGKILL. 0 means no timeout, just wait forever.\n"     \
+        "                                       default: 0\n"
 
 #define HELP_CMD_STATUS                                                 \
         "   %s status <name> [options]\n"                               \
