@@ -107,6 +107,7 @@ bool can_execute(const char *filename, uid_t uid, gid_t gid) {
         return true;
     }
 
+    errno = EACCES;
     return false;
 }
 
@@ -140,6 +141,7 @@ bool can_read_write(const char *filename, uid_t uid, gid_t gid) {
                 return true;
             }
 
+            errno = EACCES;
             return false;
         } else {
             return false;
@@ -173,7 +175,12 @@ bool can_read_write(const char *filename, uid_t uid, gid_t gid) {
         can_write = true;
     }
 
-    return can_read && can_write;
+    if (can_read && can_write) {
+        return true;
+    }
+
+    errno = EACCES;
+    return false;
 }
 
 int get_uid_from_name(const char *username, uid_t *uidptr) {
@@ -425,7 +432,7 @@ int command_start(int argc, char *argv[]) {
     }
 
     if (crash_report != NULL && !can_execute(crash_report, selfuid, selfgid)) {
-        fprintf(stderr, "*** error: file not found or not executable: %s\n", crash_report);
+        fprintf(stderr, "*** error: file not found or not executable: %s: %s\n", crash_report, strerror(errno));
         return 1;
     }
 
@@ -492,7 +499,7 @@ int command_start(int argc, char *argv[]) {
     }
 
     if (!can_read_write(pidfile, selfuid, selfgid)) {
-        fprintf(stderr, "*** error: cannot read and write file: %s\n", pidfile);
+        fprintf(stderr, "*** error: cannot read and write file: %s: %s\n", pidfile, strerror(errno));
         status = 1;
         goto cleanup;
     }
