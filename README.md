@@ -3,6 +3,18 @@ service-runner
 
 My own service runner thing.
 
+You might ask why? Surely there are enough such programs alread? Yeah, I felt
+like it. Also, it is relatively minimal and does exactly what I want, which
+includes:
+
+* Start services
+* Stop services
+* Show service status
+* Restarts the service on crash
+* Can report crashes
+* Start service as a different user
+* Logfile handling including log-rotate and setting owner of logfile
+
 Requires Linux 5.3 or newer because it uses the `pidfd_open()` and
 `pidfd_send_signal()` system calls.
 
@@ -36,6 +48,8 @@ COMMANDS:
                                        This implements log-rotating based on the
                                        file name pattern. See `man strftime` for
                                        a description of the pattern language.
+       --chown-logfile                 Change owner of the logfile to user/group
+                                       specified by --user/--group.
        --user=USER, -u USER            Run service as USER (name or UID).
        --group=GROUP, -g GROUP         Run service as GROUP (name or GID).
        --crash-sleep=SECONDS           Wait SECONDS before restarting service. 

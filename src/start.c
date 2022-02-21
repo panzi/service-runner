@@ -46,6 +46,7 @@ extern char **environ;
 enum {
     OPT_START_PIDFILE,
     OPT_START_LOGFILE,
+    OPT_START_CHOWN_LOGFILE,
     OPT_START_USER,
     OPT_START_GROUP,
     OPT_START_CRASH_REPORT,
@@ -54,13 +55,14 @@ enum {
 };
 
 const struct option start_options[] = {
-    [OPT_START_PIDFILE]      = { "pidfile",      required_argument, 0, 'p' },
-    [OPT_START_LOGFILE]      = { "logfile",      required_argument, 0, 'l' },
-    [OPT_START_USER]         = { "user",         required_argument, 0, 'u' },
-    [OPT_START_GROUP]        = { "group",        required_argument, 0, 'g' },
-    [OPT_START_CRASH_REPORT] = { "crash-report", required_argument, 0,  0  },
-    [OPT_START_CRASH_SLEEP]  = { "crash-sleep",  required_argument, 0,  0  },
-    [OPT_START_COUNT]        = { 0, 0, 0, 0 },
+    [OPT_START_PIDFILE]       = { "pidfile",       required_argument, 0, 'p' },
+    [OPT_START_LOGFILE]       = { "logfile",       required_argument, 0, 'l' },
+    [OPT_START_CHOWN_LOGFILE] = { "chown-logfile", no_argument,       0,  0  },
+    [OPT_START_USER]          = { "user",          required_argument, 0, 'u' },
+    [OPT_START_GROUP]         = { "group",         required_argument, 0, 'g' },
+    [OPT_START_CRASH_REPORT]  = { "crash-report",  required_argument, 0,  0  },
+    [OPT_START_CRASH_SLEEP]   = { "crash-sleep",   required_argument, 0,  0  },
+    [OPT_START_COUNT]         = { 0, 0, 0, 0 },
 };
 
 pid_t service_pid = 0;
@@ -339,6 +341,7 @@ int command_start(int argc, char *argv[]) {
     const char *user    = NULL;
     const char *group   = NULL;
 
+    bool chown_logfile = false;
     const char *crash_report = NULL;
     unsigned int crash_sleep = 1;
 
@@ -352,6 +355,10 @@ int command_start(int argc, char *argv[]) {
         switch (opt) {
             case 0:
                 switch (longind) {
+                    case OPT_START_CHOWN_LOGFILE:
+                        chown_logfile = true;
+                        break;
+
                     case OPT_START_CRASH_REPORT:
                         crash_report = optarg;
                         break;
@@ -571,6 +578,12 @@ int command_start(int argc, char *argv[]) {
     logfile_fd = open(logfile_path, O_CREAT | O_WRONLY | O_CLOEXEC | O_APPEND, 0644);
     if (logfile_fd == -1) {
         fprintf(stderr, "*** error: cannot open logfile: %s: %s\n", logfile_path, strerror(errno));
+        status = 1;
+        goto cleanup;
+    }
+
+    if (chown_logfile && fchown(logfile_fd, xuid, xgid) != 0) {
+        fprintf(stderr, "*** error: cannot change owner of logfile: %s: %s\n", logfile_path, strerror(errno));
         status = 1;
         goto cleanup;
     }
@@ -833,6 +846,10 @@ int command_start(int argc, char *argv[]) {
                             int new_logfile_fd = open(new_logfile_path_buf, O_CREAT | O_WRONLY | O_CLOEXEC | O_APPEND, 0644);
                             if (logfile_fd == -1) {
                                 fprintf(stderr, "*** error: (parent) cannot open logfile: %s: %s\n", new_logfile_path_buf, strerror(errno));
+                            }
+
+                            if (chown_logfile && fchown(new_logfile_fd, xuid, xgid) != 0) {
+                                fprintf(stderr, "*** error: (parent) cannot change owner of logfile: %s: %s\n", new_logfile_path_buf, strerror(errno));
                             }
 
                             if (close(logfile_fd) != 0) {

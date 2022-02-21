@@ -26,6 +26,7 @@
         "                                       Note that a second pidfile with the name FILE.runner is created containing the process ID of the service-runner process itself.\n" \
         "       --logfile=FILE, -l FILE         Write service output to FILE. default: /var/log/NAME-%%Y-%%m-%%d.log\n"         \
         "                                       This implements log-rotating based on the file name pattern. See `man strftime` for a description of the pattern language.\n" \
+        "       --chown-logfile                 Change owner of the logfile to user/group specified by --user/--group.\n"       \
         "       --user=USER, -u USER            Run service as USER (name or UID).\n"                                           \
         "       --group=GROUP, -g GROUP         Run service as GROUP (name or GID).\n"                                          \
         "       --crash-sleep=SECONDS           Wait SECONDS before restarting service. default: 1\n"                           \
