@@ -134,6 +134,90 @@ int command_stop(int argc, char *argv[]) {
     }
 
     pidfd = pidfd_open(pid, 0);
+    if (pidfd == -1 && errno == ENOSYS) {
+        // fallback without pidfd support
+        // weird that pidfd works in start, though?
+        fprintf(stderr, "*** error: opening %s PID %d as pidfd no supported, falling back to kill polling...\n", which, pid);
+
+        struct timespec ts_before = {
+            .tv_sec  = 0,
+            .tv_nsec = 0,
+        };
+
+        if (shutdown_timeout >= 0 && clock_gettime(CLOCK_MONOTONIC, &ts_before) != 0) {
+            fprintf(stderr, "*** error: clock_gettime(CLOCK_MONOTONIC, &ts_before): %s\n", strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
+
+        if (kill(pid, SIGTERM) != 0) {
+            fprintf(stderr, "*** error: sending SIGTERM to %s PID %d: %s\n", which, pid, strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
+
+        for (;;) {
+            struct timespec wait_time = {
+                .tv_sec  = 0,
+                .tv_nsec = 500000000,
+            };
+            nanosleep(&wait_time, NULL);
+
+            if (kill(pid, 0) != 0) {
+                if (errno == ESRCH) {
+                    break;
+                }
+                fprintf(stderr, "*** error: sending 0 to %s PID %d: %s\n", which, pid, strerror(errno));
+                status = 1;
+                goto cleanup;
+            }
+
+            if (shutdown_timeout >= 0) {
+                struct timespec ts_after = {
+                    .tv_sec  = 0,
+                    .tv_nsec = 0,
+                };
+
+                if (clock_gettime(CLOCK_MONOTONIC, &ts_after) != 0) {
+                    fprintf(stderr, "*** error: clock_gettime(CLOCK_MONOTONIC, &ts_after): %s\n", strerror(errno));
+                    status = 1;
+                    goto cleanup;
+                }
+
+                if (ts_after.tv_sec - ts_before.tv_sec > shutdown_timeout) {
+                    // timeout
+                    fprintf(stderr, "*** error: timeout waiting for %s to shutdown, sending SIGKILL...\n", name);
+
+                    if (pidfile_ok) {
+                        if (kill(service_pid, SIGKILL) != 0 && errno != ESRCH) {
+                            fprintf(stderr, "*** error: sending SIGKILL to service PID %d\n", service_pid);
+                        }
+
+                        if (read_pidfile(pidfile, &pid) == 0 && pid == service_pid && unlink(pidfile) != 0 && errno != ENOENT) {
+                            fprintf(stderr, "*** error: unlink(\"%s\"): %s\n", pidfile, strerror(errno));
+                        }
+                    }
+
+                    if (pidfile_runner_ok) {
+                        if (kill(runner_pid, SIGKILL) != 0 && errno != ESRCH) {
+                            fprintf(stderr, "*** error: sending SIGKILL to service-runner PID %d\n", runner_pid);
+                        }
+
+                        if (read_pidfile(pidfile_runner, &pid) == 0 && pid == runner_pid && unlink(pidfile_runner) != 0 && errno != ENOENT) {
+                            fprintf(stderr, "*** error: unlink(\"%s\"): %s\n", pidfile_runner, strerror(errno));
+                        }
+                    }
+
+                    status = 1;
+                    goto cleanup;
+                }
+            }
+        }
+
+        goto cleanup;
+    }
+
+    // pidfd is supported. use pidfd_send_signal() and poll() with its timeout mechanism
     if (pidfd == -1) {
         fprintf(stderr, "*** error: opening %s PID %d as pidfd: %s\n", which, pid, strerror(errno));
         status = 1;
@@ -173,7 +257,7 @@ int command_stop(int argc, char *argv[]) {
         fprintf(stderr, "*** error: timeout waiting for %s to shutdown, sending SIGKILL...\n", name);
 
         if (pidfile_ok) {
-            if (kill(service_pid, SIGKILL) != 0) {
+            if (kill(service_pid, SIGKILL) != 0 && errno != ESRCH) {
                 fprintf(stderr, "*** error: sending SIGKILL to service PID %d\n", service_pid);
             }
 
@@ -183,7 +267,7 @@ int command_stop(int argc, char *argv[]) {
         }
 
         if (pidfile_runner_ok) {
-            if (kill(runner_pid, SIGKILL) != 0) {
+            if (kill(runner_pid, SIGKILL) != 0 && errno != ESRCH) {
                 fprintf(stderr, "*** error: sending SIGKILL to service-runner PID %d\n", runner_pid);
             }
 
@@ -203,6 +287,7 @@ int command_stop(int argc, char *argv[]) {
     }
 
     if (kill(pid, 0) == 0) {
+        // Process might be a zombie here.
         // Sleep half a second to give parent of the process or init
         // one more chance to wait for it.
         struct timespec wait_time = {
