@@ -307,9 +307,19 @@ int get_gid_from_name(const char *groupname, gid_t *gidptr) {
 }
 
 void forward_signal(int sig) {
+    if (service_pid == 0) {
+        fprintf(stderr, "*** error: received signal %d, but service process is not running -> ignored\n", sig);
+        return;
+    }
+
     fprintf(stderr, "service-runner: received signal %d, forwarding to service PID %u\n", sig, service_pid);
     running = false;
 
+    if (kill(service_pid, sig) != 0) {
+        fprintf(stderr, "*** error: forwarding signal %d to PID %d: %s\n", sig, service_pid, strerror(errno));
+    }
+    /*
+    within docker pidfd_send_signal() just does nothing?
     if (service_pidfd != -1 && pidfd_send_signal(service_pidfd, sig, NULL, 0) != 0) {
         if (errno == EBADFD || errno == ENOSYS) {
             fprintf(stderr, "*** error: pidfd_send_signal(service_pidfd, %d, NULL, 0) failed, using kill(%d, %d): %s\n",
@@ -321,14 +331,25 @@ void forward_signal(int sig) {
             fprintf(stderr, "*** error: forwarding signal %d to PID %d via pidfd: %s\n", sig, service_pid, strerror(errno));
         }
     }
+    */
 }
 
 bool restart = false;
 
 void handle_restart(int sig) {
+    if (service_pid == 0) {
+        fprintf(stderr, "*** error: received signal %d, but service process is not running -> ignored\n", sig);
+        return;
+    }
+
     fprintf(stderr, "service-runner: received signal %d, restarting service...\n", sig);
     restart = true;
 
+    if (kill(service_pid, SIGTERM) != 0) {
+        fprintf(stderr, "*** error: sending SIGTERM to PID %d: %s\n", service_pid, strerror(errno));
+    }
+    /*
+    within docker pidfd_send_signal() just does nothing?
     if (service_pidfd != -1 && pidfd_send_signal(service_pidfd, SIGTERM, NULL, 0) != 0) {
         if (errno == EBADFD || errno == ENOSYS) {
             fprintf(stderr, "*** error: pidfd_send_signal(%d, SIGTERM, NULL, 0) failed, using kill(%d, SIGTERM): %s\n",
@@ -340,6 +361,7 @@ void handle_restart(int sig) {
             fprintf(stderr, "*** error: sending SIGTERM to PID %d via pidfd: %s\n", service_pid, strerror(errno));
         }
     }
+    */
 }
 
 int command_start(int argc, char *argv[]) {
