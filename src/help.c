@@ -108,10 +108,10 @@ const char *get_progname(int argc, char *argv[]) {
     }
 
 #define DECODE_UTF8Z(STR, ...) \
-    size_t codepoint_index = 0; \
-    (void) codepoint_index; \
-    for (size_t index = 0; (STR)[index];) { \
-        codepoint_index = index; \
+    size_t index = 0; \
+    while ((STR)[index]) { \
+        size_t codepoint_index = index; \
+        (void)codepoint_index; \
         uint8_t byte1 = (STR)[index ++]; \
         if (byte1 < 0x80) { \
             uint32_t codepoint = byte1; \
@@ -170,7 +170,7 @@ size_t find_word_end(const char *text, size_t text_index) {
         }
     });
 
-    return text_index + codepoint_index;
+    return text_index + index;
 }
 
 size_t find_word_start(const char *text, size_t text_index) {
@@ -181,9 +181,8 @@ size_t find_word_start(const char *text, size_t text_index) {
         }
     });
 
-    return text_index + codepoint_index;
+    return text_index + index;
 }
-
 
 // just something, probably not very correct
 size_t count_graphemes(const char *text, size_t len) {
