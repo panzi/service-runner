@@ -228,9 +228,6 @@ size_t count_graphemes(const char *text, size_t len) {
             // Combining Diacritical Marks Supplement
             (codepoint >= 0x1DC0 && codepoint <= 0x1DFF) ||
 
-            // Combining Diacritical Marks for Symbols
-            (codepoint >= 0x20D0 && codepoint <= 0x20FF) ||
-
             // Combining Half Marks
             (codepoint >= 0xFE20 && codepoint <= 0xFE2F)
         ) {
@@ -262,10 +259,9 @@ bool is_all_dots(const char *text, size_t len) {
 /**
  * @brief Prints a formatted plain text, wrapping lines in a way to keep some of the formatting.
  * 
- * It detects indentation consisting of non-breaking spaces
  * It indents wrapped lines to:
  * - Existing indentation of non-breaking spaces.
- *   If the exiting indentation alone is longer than linelen it is set to zero.
+ *   If the existing indentation alone is longer than linelen it is set to zero.
  * - Indentation marks consisting of two spaces '  ' (two U+0020) before non-space.
  * - Definition list items marked by '<term> ... <definition>' or more dots indent
  *   to the start of <definition>.
