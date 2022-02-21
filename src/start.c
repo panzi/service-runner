@@ -633,7 +633,7 @@ int command_start(int argc, char *argv[]) {
         }
 
         if (signal(SIGUSR1, handle_restart) == SIG_ERR) {
-            fprintf(stderr, "*** error: signal(SIGUSR1, forward_signal): %s\n", strerror(errno));
+            fprintf(stderr, "*** error: signal(SIGUSR1, handle_restart): %s\n", strerror(errno));
             status = 1;
             goto cleanup;
         }
