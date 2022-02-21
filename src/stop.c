@@ -141,10 +141,20 @@ int command_stop(int argc, char *argv[]) {
     }
 
     printf("Sending SIGTERM to %s at PID %d...\n", which, pid);
-    if (kill(runner_pid, SIGTERM) != 0) {
-        fprintf(stderr, "*** error: sending SIGTERM to %s PID %d: %s\n", which, pid, strerror(errno));
-        status = 1;
-        goto cleanup;
+    if (pidfd_send_signal(pidfd, SIGTERM, NULL, 0) != 0) {
+        if (errno == EBADFD || errno == ENOSYS) {
+            fprintf(stderr, "*** error: pidfd_send_signal(pidfd, SIGTERM, NULL, 0) failed, using kill(%d, SIGTERM): %s\n",
+                pid, strerror(errno));
+            if (kill(pid, SIGTERM) != 0) {
+                fprintf(stderr, "*** error: sending SIGTERM to %s PID %d: %s\n", which, pid, strerror(errno));
+                status = 1;
+                goto cleanup;
+            }
+        } else {
+            fprintf(stderr, "*** error: pidfd_send_signal(pidfd, SIGTERM, NULL, 0): %s\n", strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
     }
 
     struct pollfd pollfds[] = {

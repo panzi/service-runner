@@ -312,8 +312,8 @@ void forward_signal(int sig) {
 
     if (service_pidfd != -1 && pidfd_send_signal(service_pidfd, sig, NULL, 0) != 0) {
         if (errno == EBADFD || errno == ENOSYS) {
-            fprintf(stderr, "*** error: pidfd_send_signal(%d, %d, NULL, 0) failed, using kill(%d, %d): %s\n",
-                service_pidfd, sig, service_pid, sig, strerror(errno));
+            fprintf(stderr, "*** error: pidfd_send_signal(service_pidfd, %d, NULL, 0) failed, using kill(%d, %d): %s\n",
+                sig, service_pid, sig, strerror(errno));
             if (service_pid != 0 && kill(service_pid, sig) != 0) {
                 fprintf(stderr, "*** error: forwarding signal %d to PID %d: %s\n", sig, service_pid, strerror(errno));
             }
