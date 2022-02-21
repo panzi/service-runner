@@ -220,6 +220,8 @@ cleanup:
         close(pidfd);
     }
 
+    free(pidfile_runner);
+
     if (free_pidfile) {
         free((char*)pidfile);
     }
