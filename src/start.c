@@ -114,6 +114,11 @@ bool can_execute(const char *filename, uid_t uid, gid_t gid) {
 bool can_read_write(const char *filename, uid_t uid, gid_t gid) {
     struct stat meta;
 
+    if (uid == 0 || gid == 0) {
+        // root
+        return true;
+    }
+
     if (stat(filename, &meta) != 0) {
         if (errno == ENOENT) {
             char *namedup = strdup(filename);
@@ -184,7 +189,7 @@ bool can_read_write(const char *filename, uid_t uid, gid_t gid) {
 }
 
 int get_uid_from_name(const char *username, uid_t *uidptr) {
-    if (*username) {
+    if (!*username) {
         errno = EINVAL;
         return -1;
     }
@@ -245,7 +250,7 @@ int get_uid_from_name(const char *username, uid_t *uidptr) {
 }
 
 int get_gid_from_name(const char *groupname, gid_t *gidptr) {
-    if (*groupname) {
+    if (!*groupname) {
         errno = EINVAL;
         return -1;
     }
@@ -423,8 +428,8 @@ int command_start(int argc, char *argv[]) {
     uid_t selfuid = geteuid();
     uid_t selfgid = getegid();
 
-    uid_t xuid = uid == 0 ? selfuid : uid;
-    gid_t xgid = gid == 0 ? selfgid : gid;
+    uid_t xuid = user  == NULL ? selfuid : uid;
+    gid_t xgid = group == NULL ? selfgid : gid;
 
     if (!can_execute(command, xuid, xgid)) {
         fprintf(stderr, "*** error: file not found or not executable: %s\n", command);
@@ -689,7 +694,7 @@ int command_start(int argc, char *argv[]) {
                 goto cleanup;
             }
 
-            if (gid != 0 && setgroups(1, (gid_t[]){ gid }) != 0) {
+            if (group != NULL && setgroups(1, (gid_t[]){ gid }) != 0) {
                 fprintf(stderr, "*** error: (child) setgroups(1, (gid_t[]){ %u }): %s\n", gid, strerror(errno));
                 status = 1;
                 if (do_logrotate) {
@@ -699,7 +704,7 @@ int command_start(int argc, char *argv[]) {
                 goto cleanup;
             }
 
-            if (uid != 0 && setuid(uid) != 0) {
+            if (user != NULL && setuid(uid) != 0) {
                 fprintf(stderr, "*** error: (child) setuid(%u): %s\n", uid, strerror(errno));
                 status = 1;
                 if (do_logrotate) {
