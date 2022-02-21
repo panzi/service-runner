@@ -76,6 +76,10 @@ COMMANDS:
        Print help message to <command>. If no command is passed, prints help 
        message to all commands.
 
+   service_runner version
+
+       Print version string.
+
 (c) 2022 Mathias Panzenböck
 GitHub: https://github.com/panzi/service-runner
 ```

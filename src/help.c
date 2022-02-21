@@ -60,6 +60,12 @@
         "\n"                        \
         "       Print help message to <command>. If no command is passed, prints help message to all commands.\n"
 
+#define HELP_CMD_VERSION_HDR        \
+        "   %s version\n"
+#define HELP_CMD_VERSION_DESCR      \
+        "\n"                        \
+        "       Print version string.\n"
+
 const char *get_progname(int argc, char *argv[]) {
     return argc > 0 ? argv[0] : "service_runner";
 }
@@ -373,6 +379,7 @@ void short_usage(int argc, char *argv[]) {
     printf("       %s stop   <name> [options]\n", progname);
     printf("       %s status <name> [options]\n", progname);
     printf("       %s help [command]\n", progname);
+    printf("       %s version\n", progname);
 }
 
 void usage(int argc, char *argv[]) {
@@ -404,6 +411,9 @@ void usage(int argc, char *argv[]) {
 
     printf(HELP_CMD_HELP_HDR, progname);
     print_wrapped_text(stdout, HELP_CMD_HELP_DESCR "\n", wsize.ws_col);
+
+    printf(HELP_CMD_VERSION_HDR, progname);
+    print_wrapped_text(stdout, HELP_CMD_VERSION_DESCR "\n", wsize.ws_col);
 
     print_wrapped_text(
         stdout,
@@ -454,6 +464,10 @@ int command_help(int argc, char *argv[]) {
     } else if (strcmp(command, "help") == 0) {
         printf("\n" HELP_CMD_HELP_HDR, progname);
         print_wrapped_text(stdout, HELP_CMD_HELP_DESCR, wsize.ws_col);
+        return 0;
+    } else if (strcmp(command, "version") == 0) {
+        printf("\n" HELP_CMD_VERSION_HDR, progname);
+        print_wrapped_text(stdout, HELP_CMD_VERSION_DESCR, wsize.ws_col);
         return 0;
     } else {
         fprintf(stderr, "*** error: illegal command: %s\n", command);

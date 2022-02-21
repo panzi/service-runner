@@ -20,6 +20,17 @@ int main(int argc, char *argv[]) {
         return command_status(argc, argv);
     } else if (strcmp(command, "help") == 0) {
         return command_help(argc, argv);
+    } else if (strcmp(command, "version") == 0) {
+        if (argc != 2) {
+            fprintf(stderr, "*** error: illegal number of arguments\n");
+            short_usage(argc, argv);
+            return 1;
+        }
+        printf("%d.%d.%d\n",
+            SERVICE_RUNNER_VERSION_MAJOR,
+            SERVICE_RUNNER_VERSION_MINOR,
+            SERVICE_RUNNER_VERSION_PATCH);
+        return 0;
     } else {
         fprintf(stderr, "*** error: illegal command: %s\n", command);
         short_usage(argc, argv);

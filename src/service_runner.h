@@ -8,6 +8,10 @@
 extern "C" {
 #endif
 
+#define SERVICE_RUNNER_VERSION_MAJOR 1
+#define SERVICE_RUNNER_VERSION_MINOR 0
+#define SERVICE_RUNNER_VERSION_PATCH 0
+
 char *abspath(const char *path);
 
 void usage        (int argc, char *argv[]);
