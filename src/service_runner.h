@@ -3,6 +3,7 @@
 #pragma once
 
 #include <sys/types.h>
+#include <sys/syscall.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -11,6 +12,31 @@ extern "C" {
 #define SERVICE_RUNNER_VERSION_MAJOR 1
 #define SERVICE_RUNNER_VERSION_MINOR 0
 #define SERVICE_RUNNER_VERSION_PATCH 0
+
+
+#ifdef __ILP32__
+    #ifndef SYS_pidfd_open
+        #define SYS_pidfd_open (__X32_SYSCALL_BIT + 434)
+    #endif
+
+    #ifndef SYS_pidfd_send_signal
+        #define SYS_pidfd_send_signal (__X32_SYSCALL_BIT + 424)
+    #endif
+#else
+    #ifndef SYS_pidfd_open
+        #define SYS_pidfd_open 434
+    #endif
+
+    #ifndef SYS_pidfd_send_signal
+        #define SYS_pidfd_send_signal 424
+    #endif
+#endif
+
+#define pidfd_open(pid, flags) \
+    syscall(SYS_pidfd_open, (pid), (flags))
+
+#define pidfd_send_signal(pidfd, sig, info, flags) \
+    syscall(SYS_pidfd_send_signal, (pidfd), (sig), (info), (flags))
 
 char *abspath(const char *path);
 

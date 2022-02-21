@@ -27,12 +27,6 @@
 
 #include "service_runner.h"
 
-#define pidfd_open(pid, flags) \
-    syscall(SYS_pidfd_open, (pid), (flags))
-
-#define pidfd_send_signal(pidfd, sig, info, flags) \
-    syscall(SYS_pidfd_send_signal, (pidfd), (sig), (info), (flags))
-
 #ifndef P_PIDFD
     #define P_PIDFD 3
 #endif

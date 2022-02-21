@@ -12,13 +12,9 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <limits.h>
-#include <sys/syscall.h>
 #include <poll.h>
 
 #include "service_runner.h"
-
-#define pidfd_open(pid, flags) \
-    syscall(SYS_pidfd_open, (pid), (flags))
 
 enum {
     OPT_STOP_PIDFILE,
@@ -89,6 +85,7 @@ int command_stop(int argc, char *argv[]) {
     const char *name = argv[optind ++];
 
     int status = 0;
+    int pidfd = -1;
     bool free_pidfile = false;
     char *pidfile_runner = NULL;
 
@@ -136,7 +133,7 @@ int command_stop(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    int pidfd = pidfd_open(pid, 0);
+    pidfd = pidfd_open(pid, 0);
     if (pidfd == -1) {
         fprintf(stderr, "*** error: opening %s PID %d as pidfd: %s\n", which, pid, strerror(errno));
         status = 1;
