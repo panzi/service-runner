@@ -16,6 +16,8 @@ int main(int argc, char *argv[]) {
         return command_start(argc, argv);
     } else if (strcmp(command, "stop") == 0) {
         return command_stop(argc, argv);
+    } else if (strcmp(command, "restart") == 0) {
+        return command_restart(argc, argv);
     } else if (strcmp(command, "status") == 0) {
         return command_status(argc, argv);
     } else if (strcmp(command, "help") == 0) {

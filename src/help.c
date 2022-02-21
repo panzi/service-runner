@@ -46,6 +46,15 @@
         HELP_OPT_PIDFILE                                                                                            \
         "       --shutdown-timeout=SECONDS      If the service doesn't shut down after SECONDS after sending SIGTERM send SIGKILL. -1 means no timeout, just wait forever. default: -1\n"
 
+#define HELP_CMD_RESTART_HDR                                                    \
+        "   %s restart <name> [options]\n"
+#define HELP_CMD_RESTART_DESCR                                                  \
+        "\n"                                                                    \
+        "       Restart service <name>. Error if it's not already running.\n"   \
+        "\n"                                                                    \
+        "   OPTIONS:\n"                                                         \
+        HELP_OPT_PIDFILE
+
 #define HELP_CMD_STATUS_HDR                                             \
         "   %s status <name> [options]\n"
 #define HELP_CMD_STATUS_DESCR                                           \
@@ -376,9 +385,10 @@ void print_wrapped_text(FILE *fp, const char *text, size_t linelen) {
 void short_usage(int argc, char *argv[]) {
     const char *progname = get_progname(argc, argv);
     printf("\n");
-    printf("Usage: %s start  <name> [options] [--] <command> [argument...]\n", progname);
-    printf("       %s stop   <name> [options]\n", progname);
-    printf("       %s status <name> [options]\n", progname);
+    printf("Usage: %s start   <name> [options] [--] <command> [argument...]\n", progname);
+    printf("       %s stop    <name> [options]\n", progname);
+    printf("       %s restart <name> [options]\n", progname);
+    printf("       %s status  <name> [options]\n", progname);
     printf("       %s help [command]\n", progname);
     printf("       %s version\n", progname);
 }
@@ -406,6 +416,9 @@ void usage(int argc, char *argv[]) {
 
     printf(HELP_CMD_STOP_HDR, progname);
     print_wrapped_text(stdout, HELP_CMD_STOP_DESCR "\n", wsize.ws_col);
+
+    printf(HELP_CMD_RESTART_HDR, progname);
+    print_wrapped_text(stdout, HELP_CMD_RESTART_DESCR "\n", wsize.ws_col);
 
     printf(HELP_CMD_STATUS_HDR, progname);
     print_wrapped_text(stdout, HELP_CMD_STATUS_DESCR "\n", wsize.ws_col);
@@ -457,6 +470,10 @@ int command_help(int argc, char *argv[]) {
     } else if (strcmp(command, "stop") == 0) {
         printf("\n" HELP_CMD_STOP_HDR, progname);
         print_wrapped_text(stdout, HELP_CMD_STOP_DESCR, wsize.ws_col);
+        return 0;
+    } else if (strcmp(command, "restart") == 0) {
+        printf("\n" HELP_CMD_RESTART_HDR, progname);
+        print_wrapped_text(stdout, HELP_CMD_RESTART_DESCR, wsize.ws_col);
         return 0;
     } else if (strcmp(command, "status") == 0) {
         printf("\n" HELP_CMD_STATUS_HDR, progname);

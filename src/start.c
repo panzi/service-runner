@@ -323,6 +323,25 @@ void forward_signal(int sig) {
     }
 }
 
+bool restart = false;
+
+void handle_restart(int sig) {
+    fprintf(stderr, "service-runner: received signal %d, restarting service...\n", sig);
+    restart = true;
+
+    if (service_pidfd != -1 && pidfd_send_signal(service_pidfd, SIGTERM, NULL, 0) != 0) {
+        if (errno == EBADFD || errno == ENOSYS) {
+            fprintf(stderr, "*** error: pidfd_send_signal(%d, SIGTERM, NULL, 0) failed, using kill(%d, SIGTERM): %s\n",
+                service_pidfd, service_pid, strerror(errno));
+            if (service_pid != 0 && kill(service_pid, SIGTERM) != 0) {
+                fprintf(stderr, "*** error: sending SIGTERM to PID %d: %s\n", service_pid, strerror(errno));
+            }
+        } else {
+            fprintf(stderr, "*** error: sending SIGTERM to PID %d via pidfd: %s\n", service_pid, strerror(errno));
+        }
+    }
+}
+
 int command_start(int argc, char *argv[]) {
     if (argc < 2) {
         return 1;
@@ -601,8 +620,23 @@ int command_start(int argc, char *argv[]) {
         int result = sigprocmask(SIG_BLOCK, &nohup, NULL);
         assert(result == 0); (void)result;
 
-        signal(SIGTERM, forward_signal);
-        signal(SIGINT,  forward_signal);
+        if (signal(SIGTERM, forward_signal) == SIG_ERR) {
+            fprintf(stderr, "*** error: signal(SIGTERM, forward_signal): %s\n", strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
+
+        if (signal(SIGINT, forward_signal) == SIG_ERR) {
+            fprintf(stderr, "*** error: signal(SIGINT, forward_signal): %s\n", strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
+
+        if (signal(SIGUSR1, handle_restart) == SIG_ERR) {
+            fprintf(stderr, "*** error: signal(SIGUSR1, forward_signal): %s\n", strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
     }
 
     {
@@ -895,6 +929,12 @@ int command_start(int argc, char *argv[]) {
 
                             if (param == 0) {
                                 printf("service-runner: %s exited normally\n", name);
+                                if (restart) {
+                                    // don't set running to false
+                                    restart = false;
+                                } else {
+                                    running = false;
+                                }
                             } else {
                                 fprintf(stderr, "service-runner: *** error: %s exited with error status %d\n", name, param);
                                 crash = true;
@@ -911,6 +951,11 @@ int command_start(int argc, char *argv[]) {
 
                                 switch (param) {
                                     case SIGTERM:
+                                        if (restart) {
+                                            // don't set running to false
+                                            restart = false;
+                                            break;
+                                        }
                                     case SIGINT:
                                     case SIGKILL:
                                         printf("service-runner: service stopped via signal %d -> don't restart\n", param);
@@ -987,8 +1032,6 @@ int command_start(int argc, char *argv[]) {
                                     sleep(crash_sleep);
                                 }
                             }
-                        } else {
-                            running = false;
                         }
                     }
                 }

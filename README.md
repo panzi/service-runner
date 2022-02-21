@@ -23,10 +23,12 @@ Usage
 
 ```plain
 
-Usage: service_runner start  <name> [options] [--] <command> [argument...]
-       service_runner stop   <name> [options]
-       service_runner status <name> [options]
+Usage: service_runner start   <name> [options] [--] <command> [argument...]
+       service_runner stop    <name> [options]
+       service_runner restart <name> [options]
+       service_runner status  <name> [options]
        service_runner help [command]
+       service_runner version
 
 COMMANDS:
 
@@ -76,6 +78,14 @@ COMMANDS:
                                        SECONDS after sending SIGTERM send 
                                        SIGKILL. 0 means no timeout, just wait 
                                        forever. default: 0
+
+   service_runner restart <name> [options]
+
+       Restart service <name>. Error if it's not already running.
+
+   OPTIONS:
+       --pidfile=FILE, -p FILE         Use FILE as the pidfile. default: 
+                                       /var/run/NAME.pid
 
    service_runner status <name> [options]
 
