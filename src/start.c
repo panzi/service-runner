@@ -973,7 +973,8 @@ int command_start(int argc, char *argv[]) {
                         // handle log messages
                         ssize_t count = splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK);
                         if (count < 0) {
-                            fprintf(stderr, "*** error: (parent) splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK): %s\n", strerror(errno));
+                            fprintf(stderr, "*** error: (parent) splice(%d /* pipefd[PIPE_READ] */, NULL, %d /* logfile_fd */, NULL, %zu /* SPLICE_SZIE */, SPLICE_F_NONBLOCK): %s\n",
+                                pipefd[PIPE_READ], logfile_fd, SPLICE_SZIE, strerror(errno));
                         }
                     }
 
