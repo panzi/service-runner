@@ -309,7 +309,6 @@ void print_spaces(FILE *fp, size_t count) {
 void print_wrapped_text(FILE *fp, const char *text, size_t linelen) {
     size_t index = find_word_start(text, 0);
     size_t indent = count_graphemes(text, index);
-    size_t current_linelen = indent;
     bool wrapped = false;
     bool was_all_dots = false;
     // fprintf(stderr, "new indent width (indent): %zu\n", indent);
@@ -319,6 +318,7 @@ void print_wrapped_text(FILE *fp, const char *text, size_t linelen) {
     } else {
         fwrite(text, index, 1, fp);
     }
+    size_t current_linelen = indent;
 
     for (;;) {
         char ch = text[index];
@@ -328,7 +328,6 @@ void print_wrapped_text(FILE *fp, const char *text, size_t linelen) {
 
         if (ch == '\n') {
             fputc('\n', fp);
-            indent = 0;
             ++ index;
             size_t next_index = find_word_start(text, index);
             indent = count_graphemes(text + index, next_index - index);
@@ -357,10 +356,13 @@ void print_wrapped_text(FILE *fp, const char *text, size_t linelen) {
 
             if (!wrapped) {
                 char ch;
-                if (current_linelen == indent && ((ch = text[index]) == '-' || ch == '*') && (word_end - index) == 1) {
+                if (current_linelen == indent && ((ch = text[index]) == '-' || ch == '*' || ch == '+') && (word_end - index) == 1) {
                     indent = current_linelen + 2;
                     // fprintf(stderr, "new indent width (list): %zu\n", indent);
-                } else if (index >= 2 && text[index - 2] == ' ' && text[index - 1] == ' ') {
+                } else if (
+                    (index >= 2 && ((ch = text[index - 2]) == ' ' || ch == '\t') && text[index - 1] == ' ') ||
+                    (index >= 1 && text[index - 1] == '\t')
+                ) {
                     // indentation mark
                     indent = current_linelen;
                     // fprintf(stderr, "new indent width (mark): %zu\n", indent);
