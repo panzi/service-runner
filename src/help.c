@@ -272,6 +272,24 @@ bool is_all_dots(const char *text, size_t len) {
     return true;
 }
 
+const char SPACES[256] =
+    "                                "
+    "                                "
+    "                                "
+    "                                "
+    "                                "
+    "                                "
+    "                                "
+    "                                ";
+
+void print_spaces(FILE *fp, size_t count) {
+    while (count >= sizeof(SPACES)) {
+        fwrite(SPACES, sizeof(SPACES), 1, fp);
+        count -= sizeof(SPACES);
+    }
+    fwrite(SPACES, count, 1, fp);
+}
+
 /**
  * @brief Prints a formatted plain text, wrapping lines in a way to keep some of the formatting.
  * 
@@ -292,7 +310,6 @@ void print_wrapped_text(FILE *fp, const char *text, size_t linelen) {
     size_t index = find_word_start(text, 0);
     size_t indent = count_graphemes(text, index);
     size_t current_linelen = indent;
-    size_t line_start = 0;
     bool wrapped = false;
     bool was_all_dots = false;
     // fprintf(stderr, "new indent width (indent): %zu\n", indent);
@@ -313,7 +330,6 @@ void print_wrapped_text(FILE *fp, const char *text, size_t linelen) {
             fputc('\n', fp);
             indent = 0;
             ++ index;
-            line_start = index;
             size_t next_index = find_word_start(text, index);
             indent = count_graphemes(text + index, next_index - index);
             if (indent >= linelen) {
@@ -329,12 +345,10 @@ void print_wrapped_text(FILE *fp, const char *text, size_t linelen) {
         } else {
             size_t word_end = find_word_end(text, index);
             size_t word_graphemes = count_graphemes(text + index, word_end - index);
-            if (current_linelen + word_graphemes > linelen && index != line_start) {
+            if (current_linelen + word_graphemes > linelen && current_linelen > indent) {
                 fputc('\n', fp);
                 // fprintf(stderr, "do indent by %zu spaces\n", indent);
-                for (size_t do_indent = 0; do_indent < indent; ++ do_indent) {
-                    fputc(' ', fp);
-                }
+                print_spaces(fp, indent);
                 current_linelen = indent;
                 wrapped = true;
             }
@@ -368,9 +382,7 @@ void print_wrapped_text(FILE *fp, const char *text, size_t linelen) {
                 if (ch != '\n' && ch != 0) {
                     fputc('\n', fp);
                     // fprintf(stderr, "do indent by %zu spaces\n", indent);
-                    for (size_t do_indent = 0; do_indent < indent; ++ do_indent) {
-                        fputc(' ', fp);
-                    }
+                    print_spaces(fp, indent);
                     current_linelen = indent;
                     wrapped = true;
                 }
