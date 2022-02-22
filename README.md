@@ -24,16 +24,16 @@ Usage
 
 ```plain
 
-Usage: service_runner start   <name> [options] [--] <command> [argument...]
-       service_runner stop    <name> [options]
-       service_runner restart <name> [options]
-       service_runner status  <name> [options]
-       service_runner help [command]
-       service_runner version
+Usage: service-runner start   <name> [options] [--] <command> [argument...]
+       service-runner stop    <name> [options]
+       service-runner restart <name> [options]
+       service-runner status  <name> [options]
+       service-runner help [command]
+       service-runner version
 
 COMMANDS:
 
-   service_runner start <name> [options] [--] <command> [argument...]
+   service-runner start <name> [options] [--] <command> [argument...]
 
        Start <command> as service <name>. Does nothing if the service is already
        running. This automatically deamonizes, handles PID- and log-files, and 
@@ -67,7 +67,7 @@ COMMANDS:
                                          DUMPED ... service core dumped, STATUS
                                                     is the killing signal
 
-   service_runner stop <name> [options]
+   service-runner stop <name> [options]
 
        Stop service <name>. If --pidfile was passed to the corresponding start 
        command it must be passed with the same argument here again.
@@ -80,7 +80,7 @@ COMMANDS:
                                        SIGKILL. 0 means no timeout, just wait 
                                        forever. default: 0
 
-   service_runner restart <name> [options]
+   service-runner restart <name> [options]
 
        Restart service <name>. Error if it's not already running.
 
@@ -88,7 +88,7 @@ COMMANDS:
        --pidfile=FILE, -p FILE         Use FILE as the pidfile. default: 
                                        /var/run/NAME.pid
 
-   service_runner status <name> [options]
+   service-runner status <name> [options]
 
        Print some status information about service <name>.
 
@@ -96,12 +96,12 @@ COMMANDS:
        --pidfile=FILE, -p FILE         Use FILE as the pidfile. default: 
                                        /var/run/NAME.pid
 
-   service_runner help [command]
+   service-runner help [command]
 
        Print help message to <command>. If no command is passed, prints help 
        message to all commands.
 
-   service_runner version
+   service-runner version
 
        Print version string.
 

@@ -10,7 +10,7 @@
 #include <signal.h>
 #include <assert.h>
 
-#include "service_runner.h"
+#include "service-runner.h"
 
 enum {
     OPT_STATUS_PIDFILE,

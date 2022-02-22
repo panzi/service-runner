@@ -26,7 +26,7 @@
 #include <poll.h>
 #include <spawn.h>
 
-#include "service_runner.h"
+#include "service-runner.h"
 
 #ifndef P_PIDFD
     #define P_PIDFD 3

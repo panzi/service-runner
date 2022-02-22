@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "service_runner.h"
+#include "service-runner.h"
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {

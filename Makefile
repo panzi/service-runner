@@ -1,7 +1,7 @@
 CC=gcc
 CFLAGS=-Wall -std=c11 -Werror
 BUILDDIR=build
-BIN=$(BUILDDIR)/bin/service_runner
+BIN=$(BUILDDIR)/bin/service-runner
 OBJ=$(patsubst src/%.c,$(BUILDDIR)/obj/%.o,$(wildcard src/*.c))
 RELEASE=OFF
 PREFIX=/usr/local/bin
@@ -21,13 +21,13 @@ install: $(BIN)
 	cp $(BIN) $(PREFIX)
 
 uninstall:
-	rm $(PREFIX)/service_runner
+	rm $(PREFIX)/service-runner
 
 $(BIN): $(OBJ)
 	@mkdir -p $(BUILDDIR)/bin
 	$(CC) $(CFLAGS) $(OBJ) -o $@
 
-$(BUILDDIR)/obj/%.o: src/%.c src/service_runner.h
+$(BUILDDIR)/obj/%.o: src/%.c src/service-runner.h
 	@mkdir -p $(BUILDDIR)/obj
 	$(CC) $(CFLAGS) $< -c -o $@
 

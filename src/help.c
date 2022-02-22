@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "service_runner.h"
+#include "service-runner.h"
 
 #define WS_COL_DEFAULT 80
 #define WS_ROW_DEFAULT 80
@@ -77,7 +77,7 @@
         "       Print version string.\n"
 
 const char *get_progname(int argc, char *argv[]) {
-    return argc > 0 ? argv[0] : "service_runner";
+    return argc > 0 ? argv[0] : "service-runner";
 }
 
 // only can handle valid UTF-8

@@ -14,7 +14,7 @@
 #include <limits.h>
 #include <poll.h>
 
-#include "service_runner.h"
+#include "service-runner.h"
 
 enum {
     OPT_STOP_PIDFILE,

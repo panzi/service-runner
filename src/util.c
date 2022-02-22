@@ -9,7 +9,7 @@
 #include <assert.h>
 #include <string.h>
 
-#include "service_runner.h"
+#include "service-runner.h"
 
 size_t dirend(const char *path) {
     size_t index = strlen(path);
