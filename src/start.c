@@ -62,6 +62,8 @@ const struct option start_options[] = {
 pid_t service_pid = 0;
 int service_pidfd = -1;
 volatile bool running = false;
+volatile bool restart = false;
+volatile bool got_sigchld = false;
 
 bool is_valid_name(const char *name) {
     if (!*name) {
@@ -332,8 +334,6 @@ void forward_signal(int sig) {
     }
 }
 
-bool restart = false;
-
 void handle_restart(int sig) {
     if (service_pid == 0) {
         fprintf(stderr, "*** error: received signal %d, but service process is not running -> ignored\n", sig);
@@ -358,6 +358,11 @@ void handle_restart(int sig) {
     } else if (kill(service_pid, SIGTERM) != 0) {
         fprintf(stderr, "*** error: sending SIGTERM to PID %d: %s\n", service_pid, strerror(errno));
     }
+}
+
+void handle_child(int sig) {
+    // for when pidfd is not supported handle child exiting via SIGCHLD and EINTR of poll()
+    got_sigchld = true;
 }
 
 int command_start(int argc, char *argv[]) {
@@ -642,6 +647,7 @@ int command_start(int argc, char *argv[]) {
         sigaddset(&mask, SIGTERM);
         sigaddset(&mask, SIGINT);
         sigaddset(&mask, SIGUSR1);
+        sigaddset(&mask, SIGCHLD);
         if (sigprocmask(SIG_BLOCK, &mask, NULL) != 0) {
             fprintf(stderr, "*** error: sigprocmask(SIG_BLOCK, &mask, NULL): %s\n", strerror(errno));
             status = 1;
@@ -797,6 +803,7 @@ int command_start(int argc, char *argv[]) {
             sigaddset(&mask, SIGTERM);
             sigaddset(&mask, SIGINT);
             sigaddset(&mask, SIGUSR1);
+            sigaddset(&mask, SIGCHLD);
             if (sigprocmask(SIG_UNBLOCK, &mask, NULL) != 0) {
                 fprintf(stderr, "*** error: (child) sigprocmask(SIG_UNBLOCK, &mask, NULL): %s\n", strerror(errno));
                 status = 1;
@@ -839,7 +846,7 @@ int command_start(int argc, char *argv[]) {
             }
 
             service_pidfd = pidfd_open(service_pid, 0);
-            if (service_pidfd == -1) {
+            if (service_pidfd == -1 && errno != ENOSYS) {
                 fprintf(stderr, "*** error: (parent) pidfd_open(%u): %s\n", service_pid, strerror(errno));
 
                 // wait a bit so the signal handlers are resetted again in child
@@ -888,25 +895,39 @@ int command_start(int argc, char *argv[]) {
                 [POLLFD_PIPE] = { pipefd[PIPE_READ], do_logrotate ? POLLIN : 0, 0 },
             };
 
+            if (service_pidfd == -1) {
+                // for systems that don't support pidfd
+                pollfds[POLLFD_PID ].revents = 0;
+                if (signal(SIGCHLD, handle_child) != 0) {
+                    fprintf(stderr, "*** error: signal(SIGCHLD, handle_child): %s\n", strerror(errno));
+                }
+            }
+
+            sigset_t mask;
+            sigemptyset(&mask);
+            sigaddset(&mask, SIGCHLD);
+            if (sigprocmask(SIG_UNBLOCK, &mask, NULL) != 0) {
+                fprintf(stderr, "*** error: (parent) sigprocmask(SIG_UNBLOCK, &mask, NULL): %s\n", strerror(errno));
+            }
+
             while (pollfds[POLLFD_PID].events != 0 || pollfds[POLLFD_PIPE].events != 0) {
                 pollfds[POLLFD_PID ].revents = 0;
                 pollfds[POLLFD_PIPE].revents = 0;
 
                 int result =
                     pollfds[0].events == 0 ? poll(pollfds + 1, 1, -1) :
-                    pollfds[1].events == 0 ? poll(pollfds, 1, -1) :
-                                             poll(pollfds, 2, -1);
+                    pollfds[1].events == 0 ? poll(pollfds,     1, -1) :
+                                             poll(pollfds,     2, -1);
                 if (result < 0) {
-                    if (errno == EINTR) {
-                        continue;
+                    if (errno != EINTR) {
+                        fprintf(stderr, "*** error: (parent) poll(): %s\n", strerror(errno));
+                        break;
                     }
-                    fprintf(stderr, "*** error: (parent) poll(&pollfds, 2, -1): %s\n", strerror(errno));
-                    break;
                 }
 
                 if (do_logrotate) {
                     if (pollfds[POLLFD_PIPE].revents & POLLIN) {
-                        // logrotate
+                        // log-handling
                         time_t now = time(NULL);
                         struct tm local_now;
                         char new_logfile_path_buf[PATH_MAX];
@@ -961,7 +982,8 @@ int command_start(int argc, char *argv[]) {
                     }
                 }
 
-                if (pollfds[POLLFD_PID].revents & POLLIN) {
+                if ((pollfds[POLLFD_PID].revents & POLLIN) || got_sigchld) {
+                    got_sigchld = false;
                     // waitid() doesn't work for some reason! always produces ECHLD
                     int service_status = 0;
                     pid_t result = waitpid(service_pid, &service_status, WNOHANG);
@@ -971,6 +993,17 @@ int command_start(int argc, char *argv[]) {
                         pollfds[POLLFD_PID].events = 0;
                         fprintf(stderr, "*** error: (parent) waitpid(%d, &service_status, WNOHANG): %s\n", service_pid, strerror(errno));
                     } else {
+                        // block signals again until we're ready again
+                        sigset_t mask;
+                        sigemptyset(&mask);
+                        sigaddset(&mask, SIGTERM);
+                        sigaddset(&mask, SIGINT);
+                        sigaddset(&mask, SIGUSR1);
+                        sigaddset(&mask, SIGCHLD);
+                        if (sigprocmask(SIG_BLOCK, &mask, NULL) != 0) {
+                            fprintf(stderr, "*** error: (parent) sigprocmask(SIG_BLOCK, &mask, NULL): %s\n", strerror(errno));
+                        }
+
                         pollfds[POLLFD_PID].events = 0;
                         bool crash = false;
                         int param = 0;
@@ -1098,7 +1131,7 @@ int command_start(int argc, char *argv[]) {
                 fprintf(stderr, "*** error: (parent) close(pipefd[PIPE_READ]): %s\n", strerror(errno));
             }
 
-            if (close(service_pidfd) != 0) {
+            if (service_pidfd != -1 && close(service_pidfd) != 0) {
                 fprintf(stderr, "*** error: (parent) close(pidfd): %s\n", strerror(errno));
             }
             service_pidfd = -1;

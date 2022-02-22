@@ -15,8 +15,9 @@ includes:
 * Start service as a different user
 * Logfile handling including log-rotate and setting owner of logfile
 
-Requires Linux 5.3 or newer because it uses the `pidfd_open()` and
-`pidfd_send_signal()` system calls.
+It uses `pidfd_open()` and `pidfd_send_signal()`, but has fallback code for when
+that is not supported by the kernel. That makes the code a bit messy and redundant,
+so maybe I remove the pidfd code again.
 
 Usage
 -----
