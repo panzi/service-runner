@@ -972,16 +972,40 @@ int command_start(int argc, char *argv[]) {
                         }
 
                         // handle log messages
-                        // docker filesystem doesn't support splice()
-                        // ssize_t count = splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK);
-                        // if (count < 0 && errno != EINTR) {
-                        //     fprintf(stderr, "*** error: (parent) splice(%d /* pipefd[PIPE_READ] */, NULL, %d /* logfile_fd */, NULL, %zu /* SPLICE_SZIE */, SPLICE_F_NONBLOCK): %s\n",
-                        //         pipefd[PIPE_READ], logfile_fd, SPLICE_SZIE, strerror(errno));
-                        // }
-                        ssize_t count = sendfile(logfile_fd, pipefd[PIPE_READ], NULL, SPLICE_SZIE);
+                        ssize_t count = splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK);
                         if (count < 0 && errno != EINTR) {
-                            fprintf(stderr, "*** error: (parent) sendfile(%d /* logfile_fd */, %d /* pipefd[PIPE_READ] */, NULL, %zu /* SPLICE_SZIE */): %s\n",
-                                logfile_fd, pipefd[PIPE_READ], SPLICE_SZIE, strerror(errno));
+                            if (errno == EINVAL) {
+                                // the docker volume filesystem doesn't support splice()
+                                // and sendfile() doesn't support out_fd with O_APPEND set
+                                // -> manual read()/write()
+                                char buf[BUFSIZ];
+                                ssize_t rcount = read(pipefd[PIPE_READ], buf, sizeof(buf));
+                                if (rcount < 0) {
+                                    if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                                        fprintf(stderr, "*** error: (parent) read(pipefd[PIPE_READ], buf, sizeof(buf)): %s\n",
+                                            strerror(errno));
+                                    }
+                                    break;
+                                } else {
+                                    size_t offset = 0;
+                                    while (offset < rcount) {
+                                        ssize_t wcount = write(logfile_fd, buf + offset, rcount - offset);
+                                        if (wcount < 0) {
+                                            if (errno == EINTR) {
+                                                continue;
+                                            }
+                                            fprintf(stderr, "*** error: (parent) write(logfile_fd, buf + offset, rcount - offset): %s\n",
+                                                strerror(errno));
+                                            break;
+                                        }
+
+                                        offset += wcount;
+                                    }
+                                }
+                            } else {
+                                fprintf(stderr, "*** error: (parent) splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK): %s\n",
+                                    strerror(errno));
+                            }
                         }
                     }
 
