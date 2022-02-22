@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/sendfile.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
@@ -971,10 +972,16 @@ int command_start(int argc, char *argv[]) {
                         }
 
                         // handle log messages
-                        ssize_t count = splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK);
-                        if (count < 0) {
-                            fprintf(stderr, "*** error: (parent) splice(%d /* pipefd[PIPE_READ] */, NULL, %d /* logfile_fd */, NULL, %zu /* SPLICE_SZIE */, SPLICE_F_NONBLOCK): %s\n",
-                                pipefd[PIPE_READ], logfile_fd, SPLICE_SZIE, strerror(errno));
+                        // docker filesystem doesn't support splice()
+                        // ssize_t count = splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK);
+                        // if (count < 0 && errno != EINTR) {
+                        //     fprintf(stderr, "*** error: (parent) splice(%d /* pipefd[PIPE_READ] */, NULL, %d /* logfile_fd */, NULL, %zu /* SPLICE_SZIE */, SPLICE_F_NONBLOCK): %s\n",
+                        //         pipefd[PIPE_READ], logfile_fd, SPLICE_SZIE, strerror(errno));
+                        // }
+                        ssize_t count = sendfile(logfile_fd, pipefd[PIPE_READ], NULL, SPLICE_SZIE);
+                        if (count < 0 && errno != EINTR) {
+                            fprintf(stderr, "*** error: (parent) sendfile(%d /* logfile_fd */, %d /* pipefd[PIPE_READ] */, NULL, %zu /* SPLICE_SZIE */): %s\n",
+                                logfile_fd, pipefd[PIPE_READ], SPLICE_SZIE, strerror(errno));
                         }
                     }
 
