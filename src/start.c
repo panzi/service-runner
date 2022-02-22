@@ -315,23 +315,21 @@ void forward_signal(int sig) {
     fprintf(stderr, "service-runner: received signal %d, forwarding to service PID %u\n", sig, service_pid);
     running = false;
 
-    if (kill(service_pid, sig) != 0) {
+    if (service_pidfd != -1) {
+        if (pidfd_send_signal(service_pidfd, sig, NULL, 0) != 0) {
+            if (errno == EBADFD || errno == ENOSYS) {
+                fprintf(stderr, "*** error: pidfd_send_signal(service_pidfd, %d, NULL, 0) failed, using kill(%d, %d): %s\n",
+                    sig, service_pid, sig, strerror(errno));
+                if (service_pid != 0 && kill(service_pid, sig) != 0) {
+                    fprintf(stderr, "*** error: forwarding signal %d to PID %d: %s\n", sig, service_pid, strerror(errno));
+                }
+            } else {
+                fprintf(stderr, "*** error: forwarding signal %d to PID %d via pidfd: %s\n", sig, service_pid, strerror(errno));
+            }
+        }
+    } else if (kill(service_pid, sig) != 0) {
         fprintf(stderr, "*** error: forwarding signal %d to PID %d: %s\n", sig, service_pid, strerror(errno));
     }
-    /*
-    within docker pidfd_send_signal() just does nothing?
-    if (service_pidfd != -1 && pidfd_send_signal(service_pidfd, sig, NULL, 0) != 0) {
-        if (errno == EBADFD || errno == ENOSYS) {
-            fprintf(stderr, "*** error: pidfd_send_signal(service_pidfd, %d, NULL, 0) failed, using kill(%d, %d): %s\n",
-                sig, service_pid, sig, strerror(errno));
-            if (service_pid != 0 && kill(service_pid, sig) != 0) {
-                fprintf(stderr, "*** error: forwarding signal %d to PID %d: %s\n", sig, service_pid, strerror(errno));
-            }
-        } else {
-            fprintf(stderr, "*** error: forwarding signal %d to PID %d via pidfd: %s\n", sig, service_pid, strerror(errno));
-        }
-    }
-    */
 }
 
 bool restart = false;
@@ -345,23 +343,21 @@ void handle_restart(int sig) {
     fprintf(stderr, "service-runner: received signal %d, restarting service...\n", sig);
     restart = true;
 
-    if (kill(service_pid, SIGTERM) != 0) {
+    if (service_pidfd != -1) {
+        if (pidfd_send_signal(service_pidfd, SIGTERM, NULL, 0) != 0) {
+            if (errno == EBADFD || errno == ENOSYS) {
+                fprintf(stderr, "*** error: pidfd_send_signal(%d, SIGTERM, NULL, 0) failed, using kill(%d, SIGTERM): %s\n",
+                    service_pidfd, service_pid, strerror(errno));
+                if (service_pid != 0 && kill(service_pid, SIGTERM) != 0) {
+                    fprintf(stderr, "*** error: sending SIGTERM to PID %d: %s\n", service_pid, strerror(errno));
+                }
+            } else {
+                fprintf(stderr, "*** error: sending SIGTERM to PID %d via pidfd: %s\n", service_pid, strerror(errno));
+            }
+        }
+    } else if (kill(service_pid, SIGTERM) != 0) {
         fprintf(stderr, "*** error: sending SIGTERM to PID %d: %s\n", service_pid, strerror(errno));
     }
-    /*
-    within docker pidfd_send_signal() just does nothing?
-    if (service_pidfd != -1 && pidfd_send_signal(service_pidfd, SIGTERM, NULL, 0) != 0) {
-        if (errno == EBADFD || errno == ENOSYS) {
-            fprintf(stderr, "*** error: pidfd_send_signal(%d, SIGTERM, NULL, 0) failed, using kill(%d, SIGTERM): %s\n",
-                service_pidfd, service_pid, strerror(errno));
-            if (service_pid != 0 && kill(service_pid, SIGTERM) != 0) {
-                fprintf(stderr, "*** error: sending SIGTERM to PID %d: %s\n", service_pid, strerror(errno));
-            }
-        } else {
-            fprintf(stderr, "*** error: sending SIGTERM to PID %d via pidfd: %s\n", service_pid, strerror(errno));
-        }
-    }
-    */
 }
 
 int command_start(int argc, char *argv[]) {
@@ -635,27 +631,19 @@ int command_start(int argc, char *argv[]) {
 
     // child
     {
-        // setup signal handling
-        sigset_t nohup;
-        sigemptyset(&nohup);
-        sigaddset(&nohup, SIGHUP);
-        int result = sigprocmask(SIG_BLOCK, &nohup, NULL);
-        assert(result == 0); (void)result;
-
-        if (signal(SIGTERM, forward_signal) == SIG_ERR) {
-            fprintf(stderr, "*** error: signal(SIGTERM, forward_signal): %s\n", strerror(errno));
-            status = 1;
-            goto cleanup;
-        }
-
-        if (signal(SIGINT, forward_signal) == SIG_ERR) {
-            fprintf(stderr, "*** error: signal(SIGINT, forward_signal): %s\n", strerror(errno));
-            status = 1;
-            goto cleanup;
-        }
-
-        if (signal(SIGUSR1, handle_restart) == SIG_ERR) {
-            fprintf(stderr, "*** error: signal(SIGUSR1, handle_restart): %s\n", strerror(errno));
+        // block signals until forked service process
+        // Can't install the signal handlers in here, because they would
+        // also run in the child, but if I don't block these signals
+        // service-runner might terminate in an invalid state concerning
+        // created pidfiles and such.
+        sigset_t mask;
+        sigemptyset(&mask);
+        sigaddset(&mask, SIGHUP);
+        sigaddset(&mask, SIGTERM);
+        sigaddset(&mask, SIGINT);
+        sigaddset(&mask, SIGUSR1);
+        if (sigprocmask(SIG_BLOCK, &mask, NULL) != 0) {
+            fprintf(stderr, "*** error: sigprocmask(SIG_BLOCK, &mask, NULL): %s\n", strerror(errno));
             status = 1;
             goto cleanup;
         }
@@ -803,12 +791,48 @@ int command_start(int argc, char *argv[]) {
                 }
             }
 
+            // signal masks are preserved across exec*()
+            sigset_t mask;
+            sigemptyset(&mask);
+            sigaddset(&mask, SIGTERM);
+            sigaddset(&mask, SIGINT);
+            sigaddset(&mask, SIGUSR1);
+            if (sigprocmask(SIG_UNBLOCK, &mask, NULL) != 0) {
+                fprintf(stderr, "*** error: (child) sigprocmask(SIG_UNBLOCK, &mask, NULL): %s\n", strerror(errno));
+                status = 1;
+                goto cleanup;
+            }
+
             execv(command, command_argv);
             fprintf(stderr, "*** error: (child) execv(\"%s\", command_argv): %s\n", command, strerror(errno));
             status = 1;
             goto cleanup;
         } else {
             // parent
+            {
+                // setup signal handling
+                if (signal(SIGTERM, forward_signal) == SIG_ERR) {
+                    fprintf(stderr, "*** error: (parent) signal(SIGTERM, forward_signal): %s\n", strerror(errno));
+                }
+
+                if (signal(SIGINT, forward_signal) == SIG_ERR) {
+                    fprintf(stderr, "*** error: (parent) signal(SIGINT, forward_signal): %s\n", strerror(errno));
+                }
+
+                if (signal(SIGUSR1, handle_restart) == SIG_ERR) {
+                    fprintf(stderr, "*** error: (parent) signal(SIGUSR1, handle_restart): %s\n", strerror(errno));
+                }
+
+                sigset_t mask;
+                sigemptyset(&mask);
+                sigaddset(&mask, SIGTERM);
+                sigaddset(&mask, SIGINT);
+                sigaddset(&mask, SIGUSR1);
+                if (sigprocmask(SIG_UNBLOCK, &mask, NULL) != 0) {
+                    fprintf(stderr, "*** error: (parent) sigprocmask(SIG_UNBLOCK, &mask, NULL): %s\n", strerror(errno));
+                }
+            }
+
             if (do_logrotate && close(pipefd[PIPE_WRITE]) != 0) {
                 fprintf(stderr, "*** error: (parent) close(pipefd[PIPE_WRITE]): %s\n", strerror(errno));
                 // though, ignore it anyway?
@@ -817,6 +841,13 @@ int command_start(int argc, char *argv[]) {
             service_pidfd = pidfd_open(service_pid, 0);
             if (service_pidfd == -1) {
                 fprintf(stderr, "*** error: (parent) pidfd_open(%u): %s\n", service_pid, strerror(errno));
+
+                // wait a bit so the signal handlers are resetted again in child
+                struct timespec wait_time = {
+                    .tv_sec  = 0,
+                    .tv_nsec = 500000000,
+                };
+                nanosleep(&wait_time, NULL);
 
                 if (kill(service_pid, SIGTERM) != 0 && errno != ESRCH) {
                     fprintf(stderr, "*** error: (parent) kill(%u, SIGTERM): %s\n", service_pid, strerror(errno));
