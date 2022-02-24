@@ -315,6 +315,8 @@ void forward_signal(int sig) {
         return;
     }
 
+    assert(getpid() != service_pid);
+
     fprintf(stderr, "service-runner: received signal %d, forwarding to service PID %u\n", sig, service_pid);
     running = false;
 
@@ -340,6 +342,8 @@ void handle_restart(int sig) {
         fprintf(stderr, "*** error: received signal %d, but service process is not running -> ignored\n", sig);
         return;
     }
+
+    assert(getpid() != service_pid);
 
     fprintf(stderr, "service-runner: received signal %d, restarting service...\n", sig);
     restart = true;
@@ -558,7 +562,7 @@ int command_start(int argc, char *argv[]) {
         pid_t runner_pid = 0;
         if (read_pidfile(pidfile_runner, &runner_pid) == 0) {
             if (kill(runner_pid, 0) == 0) {
-                printf("%s is already running\n", name);
+                fprintf(stderr, "%s is already running\n", name);
                 goto cleanup;
             } else {
                 fprintf(stderr, "*** error: %s exists, but PID %d doesn't exist.\n", pidfile_runner, runner_pid);
@@ -778,21 +782,21 @@ int command_start(int argc, char *argv[]) {
                     // though, ignore it anyway?
                 }
 
-                if (dup2(pipefd[PIPE_WRITE], STDOUT_FILENO) == -1) {
+                if (pipefd[PIPE_WRITE] != STDOUT_FILENO && dup2(pipefd[PIPE_WRITE], STDOUT_FILENO) == -1) {
                     fprintf(stderr, "*** error: (child) dup2(pipefd[PIPE_WRITE], STDOUT_FILENO): %s\n", strerror(errno));
                     status = 1;
                     close(pipefd[PIPE_WRITE]);
                     goto cleanup;
                 }
 
-                if (dup2(pipefd[PIPE_WRITE], STDERR_FILENO) == -1) {
+                if (pipefd[PIPE_WRITE] != STDERR_FILENO && dup2(pipefd[PIPE_WRITE], STDERR_FILENO) == -1) {
                     fprintf(stderr, "*** error: (child) dup2(pipefd[PIPE_WRITE], STDERR_FILENO): %s\n", strerror(errno));
                     status = 1;
                     close(pipefd[PIPE_WRITE]);
                     goto cleanup;
                 }
 
-                if (close(pipefd[PIPE_WRITE]) != 0) {
+                if (pipefd[PIPE_WRITE] != STDOUT_FILENO && pipefd[PIPE_WRITE] != STDERR_FILENO && close(pipefd[PIPE_WRITE]) != 0) {
                     fprintf(stderr, "*** error: (child) close(pipefd[PIPE_WRITE]): %s\n", strerror(errno));
                     // though, ignore it anyway?
                 }
@@ -1046,7 +1050,8 @@ int command_start(int argc, char *argv[]) {
                             code_str = "EXITED";
 
                             if (param == 0) {
-                                printf("service-runner: %s exited normally\n", name);
+                                // TODO: find out why printf() messages only get written after the program closes, even when using fflush(stodut)
+                                fprintf(stderr, "service-runner: %s exited normally\n", name);
                                 if (restart) {
                                     // don't set running to false
                                     restart = false;
@@ -1076,7 +1081,7 @@ int command_start(int argc, char *argv[]) {
                                         }
                                     case SIGINT:
                                     case SIGKILL:
-                                        printf("service-runner: service stopped via signal %d -> don't restart\n", param);
+                                        fprintf(stderr, "service-runner: service stopped via signal %d -> don't restart\n", param);
                                         running = false;
                                         break;
                                 }
@@ -1167,6 +1172,10 @@ int command_start(int argc, char *argv[]) {
                 fprintf(stderr, "*** error: (parent) close(pidfd): %s\n", strerror(errno));
             }
             service_pidfd = -1;
+        }
+
+        if (running) {
+            fprintf(stderr, "service-runner: restarting %s...\n", name);
         }
     }
 
