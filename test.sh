@@ -39,6 +39,7 @@ function run_test_suit () {
         if [[ "$cols" -gt "$MAX_COLS" ]]; then
             cols=$MAX_COLS
         fi
+        export CURRENT_TEST_NUMBER=$test_count
         export CURRENT_TEST=$test_file:$test_func
         export CURRENT_TEST_NAME=$test_name
 

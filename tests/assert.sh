@@ -17,22 +17,48 @@ function quote_all () {
 }
 
 function assert_ok () {
-    if ! out=$("$@" 2>&1); then
+    stdout_file=/tmp/service-runner.test.assert_ok.$CURRENT_TEST_NUMBER.$$.stdout
+    stderr_file=/tmp/service-runner.test.assert_ok.$CURRENT_TEST_NUMBER.$$.stderr
+    status=0
+    "$@" 1>"$stdout_file" 2>"$stderr_file" || status=$?
+    stdout=$(cat "$stdout_file")
+    stderr=$(cat "$stderr_file")
+
+    if [[ "$status" -ne 0 ]]; then
         echo "assertion failed in $CURRENT_TEST: assert_ok" >&2
         echo "command: $(quote_all "$@")" >&2
-        if [[ "$out" != "" ]]; then
-            echo "${RED}$out${NORMAL}" >&2
+        echo "exit status: $status" >&2
+        if [[ "$stdout" != "" ]]; then
+            echo "stdout:"
+            echo "${RED}$stdout${NORMAL}" | sed 's/^/    /' >&2
+        fi
+        if [[ "$stderr" != "" ]]; then
+            echo "stderr:"
+            echo "${RED}$stderr${NORMAL}" | sed 's/^/    /' >&2
         fi
         return 1
     fi
 }
 
 function assert_fail () {
-    if out=$("$@" 2>&1); then
+    stdout_file=/tmp/service-runner.test.assert_fail.$CURRENT_TEST_NUMBER.$$.stdout
+    stderr_file=/tmp/service-runner.test.assert_fail.$CURRENT_TEST_NUMBER.$$.stderr
+    status=0
+    "$@" 1>"$stdout_file" 2>"$stderr_file" || status=$?
+    stdout=$(cat "$stdout_file")
+    stderr=$(cat "$stderr_file")
+
+    if [[ "$status" -eq 0 ]]; then
         echo "assertion failed in $CURRENT_TEST: assert_fail" >&2
         echo "command: $(quote_all "$@")" >&2
-        if [[ "$out" != "" ]]; then
-            echo "${RED}$out${NORMAL}" >&2
+        echo "exit status: $status" >&2
+        if [[ "$stdout" != "" ]]; then
+            echo "stdout:"
+            echo "${RED}$stdout${NORMAL}" | sed 's/^/    /' >&2
+        fi
+        if [[ "$stderr" != "" ]]; then
+            echo "stderr:"
+            echo "${RED}$stderr${NORMAL}" | sed 's/^/    /' >&2
         fi
         return 1
     fi
@@ -77,8 +103,8 @@ function assert_run () {
 
     shift 3
 
-    stdout_file=/tmp/service-runnter.test.$$.stdout
-    stderr_file=/tmp/service-runnter.test.$$.stderr
+    stdout_file=/tmp/service-runner.test.$CURRENT_TEST_NUMBER.$$.stdout
+    stderr_file=/tmp/service-runner.test.$CURRENT_TEST_NUMBER.$$.stderr
     status=0
     "$@" 1>"$stdout_file" 2>"$stderr_file" || status=$?
     stdout=$(cat "$stdout_file")
