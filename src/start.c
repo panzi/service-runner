@@ -701,12 +701,14 @@ int command_start(int argc, char *argv[]) {
             }
         }
 
+        fflush(stdout);
         if (dup2(logfile_fd, STDOUT_FILENO) == -1) {
             fprintf(stderr, "*** error: dup2(logfile_fd, STDOUT_FILENO): %s\n", strerror(errno));
             status = 1;
             goto cleanup;
         }
 
+        fflush(stderr);
         if (dup2(logfile_fd, STDERR_FILENO) == -1) {
             fprintf(stderr, "*** error: dup2(logfile_fd, STDERR_FILENO): %s\n", strerror(errno));
             status = 1;
@@ -794,18 +796,24 @@ int command_start(int argc, char *argv[]) {
                     // though, ignore it anyway?
                 }
 
-                if (pipefd[PIPE_WRITE] != STDOUT_FILENO && dup2(pipefd[PIPE_WRITE], STDOUT_FILENO) == -1) {
-                    fprintf(stderr, "*** error: (child) dup2(pipefd[PIPE_WRITE], STDOUT_FILENO): %s\n", strerror(errno));
-                    status = 1;
-                    close(pipefd[PIPE_WRITE]);
-                    goto cleanup;
+                if (pipefd[PIPE_WRITE] != STDOUT_FILENO) {
+                    fflush(stdout);
+                    if (dup2(pipefd[PIPE_WRITE], STDOUT_FILENO) == -1) {
+                        fprintf(stderr, "*** error: (child) dup2(pipefd[PIPE_WRITE], STDOUT_FILENO): %s\n", strerror(errno));
+                        status = 1;
+                        close(pipefd[PIPE_WRITE]);
+                        goto cleanup;
+                    }
                 }
 
-                if (pipefd[PIPE_WRITE] != STDERR_FILENO && dup2(pipefd[PIPE_WRITE], STDERR_FILENO) == -1) {
-                    fprintf(stderr, "*** error: (child) dup2(pipefd[PIPE_WRITE], STDERR_FILENO): %s\n", strerror(errno));
-                    status = 1;
-                    close(pipefd[PIPE_WRITE]);
-                    goto cleanup;
+                if (pipefd[PIPE_WRITE] != STDERR_FILENO) {
+                    fflush(stderr);
+                    if (dup2(pipefd[PIPE_WRITE], STDERR_FILENO) == -1) {
+                        fprintf(stderr, "*** error: (child) dup2(pipefd[PIPE_WRITE], STDERR_FILENO): %s\n", strerror(errno));
+                        status = 1;
+                        close(pipefd[PIPE_WRITE]);
+                        goto cleanup;
+                    }
                 }
 
                 if (pipefd[PIPE_WRITE] != STDOUT_FILENO && pipefd[PIPE_WRITE] != STDERR_FILENO && close(pipefd[PIPE_WRITE]) != 0) {
@@ -976,10 +984,12 @@ int command_start(int argc, char *argv[]) {
                             }
 
                             logfile_fd = new_logfile_fd;
+                            fflush(stdout);
                             if (dup2(logfile_fd, STDOUT_FILENO) == -1) {
                                 fprintf(stderr, "*** error: (parent) dup2(logfile_fd, STDOUT_FILENO): %s\n", strerror(errno));
                             }
 
+                            fflush(stderr);
                             if (dup2(logfile_fd, STDERR_FILENO) == -1) {
                                 fprintf(stderr, "*** error: (parent) dup2(logfile_fd, STDERR_FILENO): %s\n", strerror(errno));
                             }
