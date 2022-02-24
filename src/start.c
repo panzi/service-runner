@@ -585,11 +585,15 @@ int command_start(int argc, char *argv[]) {
 
                     if (unlink(pidfile) != 0 && errno != ENOENT) {
                         fprintf(stderr, "*** error: unlink(\"%s\"): %s\n", pidfile, strerror(errno));
+                        status = 1;
+                        goto cleanup;
                     }
                 }
 
                 if (unlink(pidfile_runner) != 0 && errno != ENOENT) {
                     fprintf(stderr, "*** error: unlink(\"%s\"): %s\n", pidfile_runner, strerror(errno));
+                    status = 1;
+                    goto cleanup;
                 }
             }
         }
