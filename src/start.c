@@ -375,6 +375,14 @@ int command_start(int argc, char *argv[]) {
         return 1;
     }
 
+    // Ensure that stdout is line buffered, no matter if it is a tty.
+    // This is so that lines appear correctly in the logfile.
+    // This needs to happen before any write to stdout.
+    if (setvbuf(stdout, NULL, _IOLBF, 0) != 0) {
+        perror("*** error: setvbuf(stdout, NULL, _IOLBF, 0)");
+        return 1;
+    }
+
     int longind = 0;
 
     const char *pidfile = NULL;
@@ -1050,8 +1058,7 @@ int command_start(int argc, char *argv[]) {
                             code_str = "EXITED";
 
                             if (param == 0) {
-                                // TODO: find out why printf() messages only get written after the program closes, even when using fflush(stodut)
-                                fprintf(stderr, "service-runner: %s exited normally\n", name);
+                                printf("service-runner: %s exited normally\n", name);
                                 if (restart) {
                                     // don't set running to false
                                     restart = false;
@@ -1081,7 +1088,7 @@ int command_start(int argc, char *argv[]) {
                                         }
                                     case SIGINT:
                                     case SIGKILL:
-                                        fprintf(stderr, "service-runner: service stopped via signal %d -> don't restart\n", param);
+                                        printf("service-runner: service stopped via signal %d -> don't restart\n", param);
                                         running = false;
                                         break;
                                 }
@@ -1175,7 +1182,7 @@ int command_start(int argc, char *argv[]) {
         }
 
         if (running) {
-            fprintf(stderr, "service-runner: restarting %s...\n", name);
+            printf("service-runner: restarting %s...\n", name);
         }
     }
 
