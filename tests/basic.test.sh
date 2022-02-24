@@ -83,8 +83,9 @@ function test_07_crashing_service () {
 
 function test_08_shutdown_timeout () {
     assert_ok   "$SERVICE_RUNNER" start  test --pidfile="$PIDFILE" --logfile="$LOGFILE" ./examples/refusing_to_terminate_service.sh
+    sleep 0.5 # so that trap SIGTERM is for sure installed
     assert_ok   "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
-    assert_fail "$SERVICE_RUNNER" stop   test --pidfile="$PIDFILE" --shutdown-timeout=6
+    assert_fail "$SERVICE_RUNNER" stop   test --pidfile="$PIDFILE" --shutdown-timeout=5
     assert_grep "received SIGTERM, but ignores it" "$LOGFILE"
     assert_fail "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
     assert_fail pgrep service-runner
