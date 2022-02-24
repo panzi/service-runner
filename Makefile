@@ -12,7 +12,7 @@ else
     CFLAGS += -g
 endif
 
-.PHONY: all clean install uninstall
+.PHONY: all clean install uninstall test
 
 all: $(BIN)
 
@@ -22,6 +22,9 @@ install: $(BIN)
 
 uninstall:
 	rm $(PREFIX)/service-runner
+
+test: $(BIN)
+	@./test.sh
 
 $(BIN): $(OBJ)
 	@mkdir -p $(BUILDDIR)/bin

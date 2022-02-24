@@ -6,8 +6,7 @@ name=$(basename "$0" .sh)
 wait=${1:-5}
 
 function handle_sigterm () {
-    printf '[%(%Y-%m-%d %H:%M:%S%z)T] %s received SIGTERM, exiting...\n' -1 "$name"
-    exit
+    printf '[%(%Y-%m-%d %H:%M:%S%z)T] %s received SIGTERM, but ignores it\n' -1 "$name"
 }
 
 trap handle_sigterm SIGTERM

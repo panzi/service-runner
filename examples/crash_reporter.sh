@@ -34,4 +34,4 @@ echo "[$(date +'%Y-%m-%d %H:%M:%S%z')] CRASH REPORT:" "$@"
     echo "Last 40 lines of $logfile:"
     echo
     tail -n 50 "$logfile"
-} > "$DIR/../tmp/crash_report-$(date +'%Y-%m-%d_%H-%M-%S%z').txt"
+} > "${CRASH_REPORT_FILE:-$DIR/../tmp/crash_report-$(date +'%Y-%m-%d_%H-%M-%S%z').txt}"
