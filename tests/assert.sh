@@ -2,6 +2,8 @@
 
 set -eo pipefail
 
+export HIDE_CURSOR=$(echo -e '\033[?25l')
+export SHOW_CURSOR=$(echo -e '\033[?25h')
 export RED=$(echo -e '\033[0;1;31m')
 export GREEN=$(echo -e '\033[0;1;32m')
 export NORMAL=$(echo -e '\033[0m')
@@ -17,8 +19,8 @@ function quote_all () {
 }
 
 function assert_ok () {
-    stdout_file=/tmp/service-runner.test.assert_ok.$CURRENT_TEST_NUMBER.$$.stdout
-    stderr_file=/tmp/service-runner.test.assert_ok.$CURRENT_TEST_NUMBER.$$.stderr
+    stdout_file=/tmp/service-runner.tests.assert_ok.$CURRENT_TEST_NUMBER.$$.stdout
+    stderr_file=/tmp/service-runner.tests.assert_ok.$CURRENT_TEST_NUMBER.$$.stderr
     status=0
     "$@" 1>"$stdout_file" 2>"$stderr_file" || status=$?
     stdout=$(cat "$stdout_file")
@@ -41,8 +43,8 @@ function assert_ok () {
 }
 
 function assert_fail () {
-    stdout_file=/tmp/service-runner.test.assert_fail.$CURRENT_TEST_NUMBER.$$.stdout
-    stderr_file=/tmp/service-runner.test.assert_fail.$CURRENT_TEST_NUMBER.$$.stderr
+    stdout_file=/tmp/service-runner.tests.assert_fail.$CURRENT_TEST_NUMBER.$$.stdout
+    stderr_file=/tmp/service-runner.tests.assert_fail.$CURRENT_TEST_NUMBER.$$.stderr
     status=0
     "$@" 1>"$stdout_file" 2>"$stderr_file" || status=$?
     stdout=$(cat "$stdout_file")
@@ -103,8 +105,8 @@ function assert_run () {
 
     shift 3
 
-    stdout_file=/tmp/service-runner.test.$CURRENT_TEST_NUMBER.$$.stdout
-    stderr_file=/tmp/service-runner.test.$CURRENT_TEST_NUMBER.$$.stderr
+    stdout_file=/tmp/service-runner.tests.$CURRENT_TEST_NUMBER.$$.stdout
+    stderr_file=/tmp/service-runner.tests.$CURRENT_TEST_NUMBER.$$.stderr
     status=0
     "$@" 1>"$stdout_file" 2>"$stderr_file" || status=$?
     stdout=$(cat "$stdout_file")

@@ -91,6 +91,32 @@ function test_08_shutdown_timeout () {
     assert_fail pgrep service-runner
 }
 
-# TODO: more tests, like:
-# test_crash_report
-# test_logrotate
+function test_09_crash_report () {
+    export CRASH_REPORT_FILE=/tmp/service-runner.tests.crash_report.$CURRENT_TEST_NUMBER.$$.txt
+    assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" --crash-report=./examples/crash_reporter.sh ./examples/crashing_service.sh 0
+    sleep 1
+    assert_grep "Service test crashed!" "$CRASH_REPORT_FILE"
+    assert_grep "Process crashed with signal: 11" "$CRASH_REPORT_FILE"
+    assert_ok   "$SERVICE_RUNNER" stop   test --pidfile="$PIDFILE"
+    assert_fail "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
+    assert_fail pgrep service-runner
+}
+
+function test_10_logrotate () {
+    LOGFILE="/tmp/service-runner.tests.logrotate.$CURRENT_TEST_NUMBER.$$.%Y-%m-%d_%H-%M-%S.txt"
+    logfile1=$(date -d '1 seconds' +"$LOGFILE")
+    logfile2=$(date -d '2 seconds' +"$LOGFILE")
+    logfile3=$(date -d '3 seconds' +"$LOGFILE")
+    logfile4=$(date -d '4 seconds' +"$LOGFILE")
+    assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" ./examples/long_running_service.sh 0.1
+    sleep 5
+    assert_ok   "$SERVICE_RUNNER" stop   test --pidfile="$PIDFILE"
+    assert_fail "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
+    assert_fail pgrep service-runner
+    assert_grep message "$logfile1"
+    assert_grep message "$logfile2"
+    assert_grep message "$logfile3"
+    assert_grep message "$logfile4"
+}
+
+# TODO: more tests?
