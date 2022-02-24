@@ -473,12 +473,12 @@ int command_start(int argc, char *argv[]) {
 
     if (user != NULL && get_uid_from_name(user, &uid) != 0) {
         fprintf(stderr, "*** error: getting user ID for: %s\n", user);
-        return 0;
+        return 1;
     }
 
     if (group != NULL && get_gid_from_name(group, &gid) != 0) {
         fprintf(stderr, "*** error: getting group ID for: %s\n", group);
-        return 0;
+        return 1;
     }
 
     uid_t selfuid = geteuid();
