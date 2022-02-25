@@ -14,6 +14,9 @@ jobs:
     steps:
     - name: Create Test Group and User
       run: |
+        echo UID=$UID GROUPS=$GROUPS
+        whoami
+        groups
         groupadd -r tester
         useradd -rm -d /home/tester -s /bin/bash -g tester tester
     - uses: actions/checkout@v2
