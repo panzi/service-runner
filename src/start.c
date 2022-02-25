@@ -468,8 +468,8 @@ int command_start(int argc, char *argv[]) {
         return 1;
     }
 
-    uid_t uid = 0;
-    gid_t gid = 0;
+    uid_t uid = (uid_t)-1;
+    gid_t gid = (gid_t)-1;
 
     if (user != NULL && get_uid_from_name(user, &uid) != 0) {
         fprintf(stderr, "*** error: getting user ID for: %s\n", user);
@@ -770,8 +770,19 @@ int command_start(int argc, char *argv[]) {
                 goto cleanup;
             }
 
-            if (group != NULL && setgroups(1, (gid_t[]){ gid }) != 0) {
-                fprintf(stderr, "*** error: (child) setgroups(1, (gid_t[]){ %u }): %s\n", gid, strerror(errno));
+            // drop _supplementary_ group IDs
+            if (group != NULL && setgroups(0, NULL) != 0) {
+                fprintf(stderr, "*** error: (child) setgroups(0, NULL): %s\n", strerror(errno));
+                status = 1;
+                if (do_logrotate) {
+                    close(pipefd[PIPE_READ]);
+                    close(pipefd[PIPE_WRITE]);
+                }
+                goto cleanup;
+            }
+
+            if (group != NULL && setgid(gid) != 0) {
+                fprintf(stderr, "*** error: (child) setgid(%u): %s\n", gid, strerror(errno));
                 status = 1;
                 if (do_logrotate) {
                     close(pipefd[PIPE_READ]);
