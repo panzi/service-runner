@@ -1,6 +1,9 @@
 service-runner
 ==============
 
+[![Test Status](https://img.shields.io/github/workflow/status/panzi/service-runner/Tests)](https://github.com/panzi/service-runner/actions/workflows/tests.yml)
+[![License](https://img.shields.io/github/license/panzi/service-runner)](https://github.com/panzi/service-runner/blob/main/LICENSE)
+
 My own service runner thing.
 
 You might ask why? Surely there are enough such programs alread? Yeah, I felt
