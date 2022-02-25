@@ -89,7 +89,16 @@ success_count=0
 test_count=0
 
 function run_test_suit () {
-    test_file=$1
+    local test_file=$1
+    local prefix_len
+    local cols
+    local prefix
+    local test_name
+    local test_count
+
+    TEST_SUIT=$(basename "$test_file" .test.sh)
+    export TEST_SUIT
+
     shift
 
     for test_func in "$@"; do
@@ -107,13 +116,13 @@ function run_test_suit () {
         export CURRENT_TEST=$test_file:$test_func
         export CURRENT_TEST_NAME=$test_name
 
-        export PIDFILE=/tmp/service-runner.tests.$test_count.$$.pid
-        export LOGFILE=/tmp/service-runner.tests.$test_count.$$.log
+        export PIDFILE=/tmp/service-runner.tests.$TEST_SUIT.$test_count.$$.pid
+        export LOGFILE=/tmp/service-runner.tests.$TEST_SUIT.$test_count.$$.log
         if [[ -e "$LOGFILE" ]]; then
             rm -- "$LOGFILE"
         fi
 
-        if out=$(bash -eo pipefail -c ". tests/assert.sh; . $(printf %q "$test_file"); $(printf %q test_"$test_func")" 2>&1); then
+        if out=$(bash -eo pipefail -c ". tests/assert.sh; . $(printf %q "$test_file"); $(printf %q "test_$test_func")" 2>&1); then
             success_count=$((success_count+1))
             printf -- "\r%s${GREEN}%$((cols-prefix_len))s${NORMAL}\n" "$prefix" PASS
         else
@@ -133,7 +142,9 @@ function run_test_suit () {
 }
 
 function run_test_file () {
-    test_file=$1
+    local suit_name
+    local test_funcs
+    local test_file=$1
     shift
 
     suit_name=$(basename "$test_file" .test.sh | tr _ ' ')

@@ -92,7 +92,7 @@ function test_08_shutdown_timeout () {
 }
 
 function test_09_crash_report () {
-    export CRASH_REPORT_FILE=/tmp/service-runner.tests.crash_report.$CURRENT_TEST_NUMBER.$$.txt
+    export CRASH_REPORT_FILE=/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.crash_report.txt
     assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" --crash-report=./examples/crash_reporter.sh ./examples/crashing_service.sh 0
     sleep 1
     assert_grep "Service test crashed!" "$CRASH_REPORT_FILE"
@@ -103,7 +103,7 @@ function test_09_crash_report () {
 }
 
 function test_10_logrotate () {
-    LOGFILE="/tmp/service-runner.tests.logrotate.$CURRENT_TEST_NUMBER.$$.%Y-%m-%d_%H-%M-%S.txt"
+    LOGFILE="/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.logrotate.%Y-%m-%d_%H-%M-%S.txt"
     logfile1=$(date -d '1 seconds' +"$LOGFILE")
     logfile2=$(date -d '2 seconds' +"$LOGFILE")
     logfile3=$(date -d '3 seconds' +"$LOGFILE")
@@ -118,5 +118,3 @@ function test_10_logrotate () {
     assert_grep message "$logfile3"
     assert_grep message "$logfile4"
 }
-
-# TODO: more tests?

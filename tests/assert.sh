@@ -19,8 +19,8 @@ function quote_all () {
 }
 
 function assert_ok () {
-    stdout_file=/tmp/service-runner.tests.assert_ok.$CURRENT_TEST_NUMBER.$$.stdout
-    stderr_file=/tmp/service-runner.tests.assert_ok.$CURRENT_TEST_NUMBER.$$.stderr
+    stdout_file=/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.assert_ok.stdout
+    stderr_file=/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.assert_ok.stderr
     status=0
     "$@" 1>"$stdout_file" 2>"$stderr_file" || status=$?
     stdout=$(cat "$stdout_file")
@@ -43,8 +43,8 @@ function assert_ok () {
 }
 
 function assert_fail () {
-    stdout_file=/tmp/service-runner.tests.assert_fail.$CURRENT_TEST_NUMBER.$$.stdout
-    stderr_file=/tmp/service-runner.tests.assert_fail.$CURRENT_TEST_NUMBER.$$.stderr
+    stdout_file=/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.assert_fail.stdout
+    stderr_file=/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.assert_fail.stderr
     status=0
     "$@" 1>"$stdout_file" 2>"$stderr_file" || status=$?
     stdout=$(cat "$stdout_file")
@@ -105,8 +105,8 @@ function assert_run () {
 
     shift 3
 
-    stdout_file=/tmp/service-runner.tests.$CURRENT_TEST_NUMBER.$$.stdout
-    stderr_file=/tmp/service-runner.tests.$CURRENT_TEST_NUMBER.$$.stderr
+    stdout_file=/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.assert_run.stdout
+    stderr_file=/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.assert_run.stderr
     status=0
     "$@" 1>"$stdout_file" 2>"$stderr_file" || status=$?
     stdout=$(cat "$stdout_file")
