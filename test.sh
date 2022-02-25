@@ -101,17 +101,26 @@ function run_test_suit () {
 
     shift
 
+    if [[ -t 1 ]] && [[ -t 2 ]]; then
+        isatty=1
+        cols=$(tput cols 2>/dev/null || true)
+        if [[ -z "$cols" ]] || [[ "$cols" -gt "$MAX_COLS" ]]; then
+            cols=$MAX_COLS
+        fi
+    else
+        isatty=0
+        cols=$MAX_COLS
+    fi
+
     for test_func in "$@"; do
         test_name=${test_func//_/ }
         test_count=$((test_count+1))
 
         prefix="- $test_name "
-        echo -n "$prefix"
-        prefix_len=$(echo -n "$prefix" | wc -c)
-        cols=$(tput cols 2>/dev/null || true)
-        if [[ -z "$cols" ]] || [[ "$cols" -gt "$MAX_COLS" ]]; then
-            cols=$MAX_COLS
+        if [[ "$isatty" -eq 1 ]]; then
+            echo -n "$prefix"
         fi
+        prefix_len=$(echo -n "$prefix" | wc -c)
         export CURRENT_TEST_NUMBER=$test_count
         export CURRENT_TEST=$test_file:$test_func
         export CURRENT_TEST_NAME=$test_name
