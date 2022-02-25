@@ -1,0 +1,27 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Create Test Group and User
+      run: |
+        groupadd -r tester
+        useradd -rm -d /home/tester -s /bin/bash -g tester tester
+    - uses: actions/checkout@v2
+    - name: Build
+      run: |
+        make -j`nproc`
+    - name: Tests
+      run: |
+        export TEST_USER=tester
+        export TEST_GROUP=tester
+        make -j`nproc` test
