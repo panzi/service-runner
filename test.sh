@@ -107,9 +107,11 @@ function run_test_suit () {
         if [[ -z "$cols" ]] || [[ "$cols" -gt "$MAX_COLS" ]]; then
             cols=$MAX_COLS
         fi
+        cr='\r'
     else
         isatty=0
         cols=$MAX_COLS
+        cr=
     fi
 
     for test_func in "$@"; do
@@ -133,10 +135,10 @@ function run_test_suit () {
 
         if out=$(bash -eo pipefail -c ". tests/assert.sh; . $(printf %q "$test_file"); $(printf %q "test_$test_func")" 2>&1); then
             success_count=$((success_count+1))
-            printf -- "\r%s${GREEN}%$((cols-prefix_len))s${NORMAL}\n" "$prefix" PASS
+            printf -- "$cr%s${GREEN}%$((cols-prefix_len))s${NORMAL}\n" "$prefix" PASS
         else
             fail_count=$((fail_count+1))
-            printf -- "\r%s${RED}%$((cols-prefix_len))s${NORMAL}\n" "$prefix" FAIL
+            printf -- "$cr%s${RED}%$((cols-prefix_len))s${NORMAL}\n" "$prefix" FAIL
             echo "$out" >&2
             echo >&2
         fi

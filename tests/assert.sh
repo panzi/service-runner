@@ -2,8 +2,18 @@
 
 set -eo pipefail
 
-export HIDE_CURSOR=$(echo -e '\033[?25l')
-export SHOW_CURSOR=$(echo -e '\033[?25h')
+if [[ -t 1 ]] && [[ -t 2 ]]; then
+    HIDE_CURSOR=$(echo -e '\033[?25l')
+    SHOW_CURSOR=$(echo -e '\033[?25h')
+else
+    HIDE_CURSOR=
+    SHOW_CURSOR=
+fi
+
+export HIDE_CURSOR
+export SHOW_CURSOR
+
+# GitHib actions supports colors:
 export RED=$(echo -e '\033[0;1;31m')
 export GREEN=$(echo -e '\033[0;1;32m')
 export NORMAL=$(echo -e '\033[0m')
