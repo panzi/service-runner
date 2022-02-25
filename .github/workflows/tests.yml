@@ -17,8 +17,8 @@ jobs:
         echo UID=$UID GROUPS=$GROUPS
         whoami
         groups
-        groupadd -r tester
-        useradd -rm -d /home/tester -s /bin/bash -g tester tester
+        sudo groupadd -r tester
+        sudo useradd -rm -d /home/tester -s /bin/bash -g tester tester
     - uses: actions/checkout@v2
     - name: Build
       run: |
@@ -27,4 +27,4 @@ jobs:
       run: |
         export TEST_USER=tester
         export TEST_GROUP=tester
-        make -j`nproc` test
+        sudo make -j`nproc` test
