@@ -2,8 +2,9 @@
 
 set -eo pipefail
 
-# TODO: tests using --user/--group and --chown-logfile
-#       needs to be run as root and needs a known non-root user
+# NOTE: Needs to be run as root and needs a known non-root user and group.
+#       These can be passed as TEST_USER and TEST_GROUP environment variables.
+#       Per default www-data will be used for both.
 
 function test_01_user_group () {
     user=${TEST_USER:-www-data}
