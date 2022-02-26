@@ -43,28 +43,29 @@ COMMANDS:
        restarts on crash.
 
    OPTIONS:
-       --pidfile=FILE, -p FILE         Use FILE as the pidfile. default: 
+       -p, --pidfile=FILE              Use FILE as the pidfile. default: 
                                        /var/run/NAME.pid
                                        Note that a second pidfile with the name
                                        FILE.runner is created containing the 
                                        process ID of the service-runner process
                                        itself.
-       --logfile=FILE, -l FILE         Write service output to FILE. default: 
+       -l, --logfile=FILE              Write service output to FILE. default: 
                                        /var/log/NAME-%%Y-%%m-%%d.log
                                        This implements log-rotating based on the
                                        file name pattern. See `man strftime` for
                                        a description of the pattern language.
-       --chown-logfile                 Change owner of the logfile to user/group
+           --chown-logfile             Change owner of the logfile to user/group
                                        specified by --user/--group.
-       --user=USER, -u USER            Run service as USER (name or UID).
-       --group=GROUP, -g GROUP         Run service as GROUP (name or GID).
-       --priority=VALUE, -N VALUE      Run service under process scheduling 
-                                       priority VALUE.
-       --umask=UMASK, -k UMASK         Run service with umask UMASK. Octal 
+       -u, --user=USER                 Run service as USER (name or UID).
+       -g, --group=GROUP               Run service as GROUP (name or GID).
+       -N, --priority=PRIORITY         Run service under process scheduling 
+                                       priority PRIORITY. From -20 (maximum 
+                                       priority) to +19 (minimum priority).
+       -k, --umask=UMASK               Run service with umask UMASK. Octal 
                                        values only.
-       --crash-sleep=SECONDS           Wait SECONDS before restarting service. 
+           --crash-sleep=SECONDS       Wait SECONDS before restarting service. 
                                        default: 1
-       --crash-report=COMMAND          Run `COMMAND NAME CODE STATUS LOGFILE` if
+           --crash-report=COMMAND      Run `COMMAND NAME CODE STATUS LOGFILE` if
                                        the service crashed.
                                        CODE values:
                                          EXITED ... service has exited, STATUS 
@@ -80,19 +81,19 @@ COMMANDS:
        command it must be passed with the same argument here again.
 
    OPTIONS:
-       --pidfile=FILE, -p FILE         Use FILE as the pidfile. default: 
+       -p, --pidfile=FILE              Use FILE as the pidfile. default: 
                                        /var/run/NAME.pid
-       --shutdown-timeout=SECONDS      If the service doesn't shut down after 
+           --shutdown-timeout=SECONDS  If the service doesn't shut down after 
                                        SECONDS after sending SIGTERM send 
-                                       SIGKILL. 0 means no timeout, just wait 
-                                       forever. default: 0
+                                       SIGKILL. -1 means no timeout, just wait 
+                                       forever. default: -1
 
    service-runner restart <name> [options]
 
        Restart service <name>. Error if it's not already running.
 
    OPTIONS:
-       --pidfile=FILE, -p FILE         Use FILE as the pidfile. default: 
+       -p, --pidfile=FILE              Use FILE as the pidfile. default: 
                                        /var/run/NAME.pid
 
    service-runner status <name> [options]
@@ -100,7 +101,7 @@ COMMANDS:
        Print some status information about service <name>.
 
    OPTIONS:
-       --pidfile=FILE, -p FILE         Use FILE as the pidfile. default: 
+       -p, --pidfile=FILE              Use FILE as the pidfile. default: 
                                        /var/run/NAME.pid
 
    service-runner help [command]

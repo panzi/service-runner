@@ -13,7 +13,7 @@
 #define WS_YPIXEL_DEFAULT (40 * 14)
 
 #define HELP_OPT_PIDFILE \
-        "       --pidfile=FILE, -p FILE         Use FILE as the pidfile. default: /var/run/NAME.pid\n"
+        "       -p, --pidfile=FILE              Use FILE as the pidfile. default: /var/run/NAME.pid\n"
 
 #define HELP_CMD_START_HDR                                                                                                      \
         "   %s start <name> [options] [--] <command> [argument...]\n"
@@ -24,15 +24,15 @@
         "   OPTIONS:\n"                                                                                                         \
         HELP_OPT_PIDFILE                                                                                                        \
         "                                       Note that a second pidfile with the name FILE.runner is created containing the process ID of the service-runner process itself.\n" \
-        "       --logfile=FILE, -l FILE         Write service output to FILE. default: /var/log/NAME-%%Y-%%m-%%d.log\n"         \
+        "       -l, --logfile=FILE              Write service output to FILE. default: /var/log/NAME-%%Y-%%m-%%d.log\n"         \
         "                                       This implements log-rotating based on the file name pattern. See `man strftime` for a description of the pattern language.\n" \
-        "       --chown-logfile                 Change owner of the logfile to user/group specified by --user/--group.\n"       \
-        "       --user=USER, -u USER            Run service as USER (name or UID).\n"                                           \
-        "       --group=GROUP, -g GROUP         Run service as GROUP (name or GID).\n"                                          \
-        "       --priority=VALUE, -N VALUE      Run service under process scheduling priority VALUE.\n"                         \
-        "       --umask=UMASK, -k UMASK         Run service with umask UMASK. Octal values only.\n"                             \
-        "       --crash-sleep=SECONDS           Wait SECONDS before restarting service. default: 1\n"                           \
-        "       --crash-report=COMMAND          Run `COMMAND NAME CODE STATUS LOGFILE` if the service crashed.\n"               \
+        "           --chown-logfile             Change owner of the logfile to user/group specified by --user/--group.\n"       \
+        "       -u, --user=USER                 Run service as USER (name or UID).\n"                                           \
+        "       -g, --group=GROUP               Run service as GROUP (name or GID).\n"                                          \
+        "       -N, --priority=PRIORITY         Run service under process scheduling priority PRIORITY. From -20 (maximum priority) to +19 (minimum priority).\n" \
+        "       -k, --umask=UMASK               Run service with umask UMASK. Octal values only.\n"                             \
+        "           --crash-sleep=SECONDS       Wait SECONDS before restarting service. default: 1\n"                           \
+        "           --crash-report=COMMAND      Run `COMMAND NAME CODE STATUS LOGFILE` if the service crashed.\n"               \
         "                                       CODE values:\n"                                                                 \
         "                                         EXITED ... service has exited, STATUS is it's exit status\n"                  \
         "                                         KILLED ... service was killed, STATUS is the killing signal\n"                \
@@ -46,7 +46,7 @@
         "\n"                                                                                                        \
         "   OPTIONS:\n"                                                                                             \
         HELP_OPT_PIDFILE                                                                                            \
-        "       --shutdown-timeout=SECONDS      If the service doesn't shut down after SECONDS after sending SIGTERM send SIGKILL. -1 means no timeout, just wait forever. default: -1\n"
+        "           --shutdown-timeout=SECONDS  If the service doesn't shut down after SECONDS after sending SIGTERM send SIGKILL. -1 means no timeout, just wait forever. default: -1\n"
 
 #define HELP_CMD_RESTART_HDR                                                    \
         "   %s restart <name> [options]\n"
