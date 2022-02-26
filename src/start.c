@@ -13,6 +13,8 @@
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/wait.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 #include <signal.h>
 #include <getopt.h>
 #include <limits.h>
@@ -44,6 +46,9 @@ enum {
     OPT_START_CHOWN_LOGFILE,
     OPT_START_USER,
     OPT_START_GROUP,
+    OPT_START_PRIORITY,
+    OPT_START_UMASK,
+    // TODO: --procsched and --iosched?
     OPT_START_CRASH_REPORT,
     OPT_START_CRASH_SLEEP,
     OPT_START_COUNT,
@@ -55,6 +60,8 @@ const struct option start_options[] = {
     [OPT_START_CHOWN_LOGFILE] = { "chown-logfile", no_argument,       0,  0  },
     [OPT_START_USER]          = { "user",          required_argument, 0, 'u' },
     [OPT_START_GROUP]         = { "group",         required_argument, 0, 'g' },
+    [OPT_START_PRIORITY]      = { "priority",      required_argument, 0, 'N' },
+    [OPT_START_UMASK]         = { "umask",         required_argument, 0, 'k' },
     [OPT_START_CRASH_REPORT]  = { "crash-report",  required_argument, 0,  0  },
     [OPT_START_CRASH_SLEEP]   = { "crash-sleep",   required_argument, 0,  0  },
     [OPT_START_COUNT]         = { 0, 0, 0, 0 },
@@ -394,8 +401,13 @@ int command_start(int argc, char *argv[]) {
     const char *crash_report = NULL;
     unsigned int crash_sleep = 1;
 
+    bool set_priority = false;
+    bool set_umask    = false;
+    int priority    = 0;
+    int umask_value = 0;
+
     for (;;) {
-        int opt = getopt_long(argc - 1, argv + 1, "p:l:u:g:", start_options, &longind);
+        int opt = getopt_long(argc - 1, argv + 1, "p:l:u:g:N:k:", start_options, &longind);
 
         if (opt == -1) {
             break;
@@ -441,6 +453,32 @@ int command_start(int argc, char *argv[]) {
             case 'l':
                 logfile = optarg;
                 break;
+
+            case 'N':
+            {
+                char *endptr = NULL;
+                long value = strtol(optarg, &endptr, 10);
+                if (!*optarg || *endptr || value > 19 || value < -20) {
+                    fprintf(stderr, "*** error: illegal value for --priority: %s\n", optarg);
+                    return 1;
+                }
+                set_priority = true;
+                priority     = value;
+                break;
+            }
+
+            case 'k':
+            {
+                char *endptr = NULL;
+                unsigned long value = strtoul(optarg, &endptr, 8);
+                if (!*optarg || *endptr || value > 0777) {
+                    fprintf(stderr, "*** error: illegal value for --umask: %s\n", optarg);
+                    return 1;
+                }
+                set_umask   = true;
+                umask_value = value;
+                break;
+            }
 
             case '?':
                 short_usage(argc, argv);
@@ -495,6 +533,20 @@ int command_start(int argc, char *argv[]) {
     if (crash_report != NULL && !can_execute(crash_report, selfuid, selfgid)) {
         fprintf(stderr, "*** error: file not found or not executable: %s: %s\n", crash_report, strerror(errno));
         return 1;
+    }
+
+    if (set_priority) {
+        struct rlimit rlim;
+        if (getrlimit(RLIMIT_NICE, &rlim) != 0) {
+            fprintf(stderr, "*** error: getrlimit(RLIMIT_NICE, &rlim): %s\n", strerror(errno));
+            return 1;
+        }
+
+        if (rlim.rlim_cur > priority) {
+            errno = EPERM;
+            fprintf(stderr, "*** error: cannot set process priority to %d: %s\n", priority, strerror(errno));
+            return 1;
+        }
     }
 
     int status = 0;
@@ -760,14 +812,30 @@ int command_start(int argc, char *argv[]) {
             goto cleanup;
         } else if (service_pid == 0) {
             // child
+            if (do_logrotate && close(pipefd[PIPE_READ]) != 0) {
+                fprintf(stderr, "*** error: (child) close(pipefd[PIPE_READ]): %s\n", strerror(errno));
+            }
+
             if (write_pidfile(pidfile, getpid()) != 0) {
                 fprintf(stderr, "*** error: write_pidfile(\"%s\", %u): %s\n", pidfile, getpid(), strerror(errno));
                 status = 1;
                 if (do_logrotate) {
-                    close(pipefd[PIPE_READ]);
                     close(pipefd[PIPE_WRITE]);
                 }
                 goto cleanup;
+            }
+
+            if (set_priority && setpriority(PRIO_PROCESS, 0, priority) != 0) {
+                fprintf(stderr, "*** error: (child) setpriority(PRIO_PROCESS, 0, %d): %s\n", priority, strerror(errno));
+                status = 1;
+                if (do_logrotate) {
+                    close(pipefd[PIPE_WRITE]);
+                }
+                goto cleanup;
+            }
+
+            if (set_umask) {
+                umask(umask_value);
             }
 
             // drop _supplementary_ group IDs
@@ -775,7 +843,6 @@ int command_start(int argc, char *argv[]) {
                 fprintf(stderr, "*** error: (child) setgroups(0, NULL): %s\n", strerror(errno));
                 status = 1;
                 if (do_logrotate) {
-                    close(pipefd[PIPE_READ]);
                     close(pipefd[PIPE_WRITE]);
                 }
                 goto cleanup;
@@ -785,7 +852,6 @@ int command_start(int argc, char *argv[]) {
                 fprintf(stderr, "*** error: (child) setgid(%u): %s\n", gid, strerror(errno));
                 status = 1;
                 if (do_logrotate) {
-                    close(pipefd[PIPE_READ]);
                     close(pipefd[PIPE_WRITE]);
                 }
                 goto cleanup;
@@ -795,18 +861,12 @@ int command_start(int argc, char *argv[]) {
                 fprintf(stderr, "*** error: (child) setuid(%u): %s\n", uid, strerror(errno));
                 status = 1;
                 if (do_logrotate) {
-                    close(pipefd[PIPE_READ]);
                     close(pipefd[PIPE_WRITE]);
                 }
                 goto cleanup;
             }
 
             if (do_logrotate) {
-                if (close(pipefd[PIPE_READ]) != 0) {
-                    fprintf(stderr, "*** error: (child) close(pipefd[PIPE_READ]): %s\n", strerror(errno));
-                    // though, ignore it anyway?
-                }
-
                 if (pipefd[PIPE_WRITE] != STDOUT_FILENO) {
                     fflush(stdout);
                     if (dup2(pipefd[PIPE_WRITE], STDOUT_FILENO) == -1) {

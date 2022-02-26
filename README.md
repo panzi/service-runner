@@ -58,6 +58,10 @@ COMMANDS:
                                        specified by --user/--group.
        --user=USER, -u USER            Run service as USER (name or UID).
        --group=GROUP, -g GROUP         Run service as GROUP (name or GID).
+       --priority=VALUE, -N VALUE      Run service under process scheduling 
+                                       priority VALUE.
+       --umask=UMASK, -k UMASK         Run service with umask UMASK. Octal 
+                                       values only.
        --crash-sleep=SECONDS           Wait SECONDS before restarting service. 
                                        default: 1
        --crash-report=COMMAND          Run `COMMAND NAME CODE STATUS LOGFILE` if

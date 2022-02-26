@@ -131,3 +131,25 @@ function test_11_lsb_status () {
     assert_status 3 "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
     assert_fail pgrep service-runner
 }
+
+function test_12_set_priority () {
+    assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" --priority=5 ./examples/long_running_service.sh
+    sleep 0.5
+    pid=$(cat "$PIDFILE")
+    priority=$(($(ps -o ni -h "$pid")))
+    assert_ok test "$priority" -eq 5
+    assert_ok   "$SERVICE_RUNNER" stop   test --pidfile="$PIDFILE"
+    assert_fail "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
+    assert_fail pgrep service-runner
+}
+
+function test_13_set_umask () {
+    assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" --umask=345 ./examples/long_running_service.sh
+    sleep 0.5
+    pid=$(cat "$PIDFILE")
+    umask=$(grep ^Umask: "/proc/$pid/status" | awk '{ print $2 }')
+    assert_streq 0345 "$umask"
+    assert_ok   "$SERVICE_RUNNER" stop   test --pidfile="$PIDFILE"
+    assert_fail "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
+    assert_fail pgrep service-runner
+}
