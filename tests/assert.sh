@@ -33,13 +33,13 @@ function assert_ok () {
     stderr_file=/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.assert_ok.stderr
     status=0
     "$@" 1>"$stdout_file" 2>"$stderr_file" || status=$?
-    stdout=$(cat "$stdout_file")
-    stderr=$(cat "$stderr_file")
 
     if [[ "$status" -ne 0 ]]; then
         echo "assertion failed in $CURRENT_TEST: assert_ok" >&2
         echo "command: $(quote_all "$@")" >&2
         echo "exit status: $status" >&2
+        stdout=$(cat "$stdout_file")
+        stderr=$(cat "$stderr_file")
         if [[ "$stdout" != "" ]]; then
             echo "stdout:"
             echo "${RED}$stdout${NORMAL}" | sed 's/^/    /' >&2
@@ -57,13 +57,41 @@ function assert_fail () {
     stderr_file=/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.assert_fail.stderr
     status=0
     "$@" 1>"$stdout_file" 2>"$stderr_file" || status=$?
-    stdout=$(cat "$stdout_file")
-    stderr=$(cat "$stderr_file")
 
     if [[ "$status" -eq 0 ]]; then
         echo "assertion failed in $CURRENT_TEST: assert_fail" >&2
         echo "command: $(quote_all "$@")" >&2
         echo "exit status: $status" >&2
+        stdout=$(cat "$stdout_file")
+        stderr=$(cat "$stderr_file")
+        if [[ "$stdout" != "" ]]; then
+            echo "stdout:"
+            echo "${RED}$stdout${NORMAL}" | sed 's/^/    /' >&2
+        fi
+        if [[ "$stderr" != "" ]]; then
+            echo "stderr:"
+            echo "${RED}$stderr${NORMAL}" | sed 's/^/    /' >&2
+        fi
+        return 1
+    fi
+}
+
+function assert_status () {
+    expected_status=$1
+    shift
+
+    stdout_file=/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.assert_status.stdout
+    stderr_file=/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.assert_status.stderr
+    status=0
+    "$@" 1>"$stdout_file" 2>"$stderr_file" || status=$?
+
+    if [[ "$status" -ne "$expected_status" ]]; then
+        echo "assertion failed in $CURRENT_TEST: assert_status" >&2
+        echo "command: $(quote_all "$@")" >&2
+        echo "expected exit status: $expected_status" >&2
+        echo "actual exit status:   $status" >&2
+        stdout=$(cat "$stdout_file")
+        stderr=$(cat "$stderr_file")
         if [[ "$stdout" != "" ]]; then
             echo "stdout:"
             echo "${RED}$stdout${NORMAL}" | sed 's/^/    /' >&2

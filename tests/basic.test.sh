@@ -13,7 +13,7 @@ function test_02_start_status_stop_service () {
     assert_run 0 "test is running" "" "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
     assert_ok "$SERVICE_RUNNER" stop test --pidfile="$PIDFILE"
     assert_grep "received SIGTERM, exiting" "$LOGFILE"
-    assert_run 1 "" "test is not running" "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
+    assert_run 3 "" "test is not running" "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
     assert_fail pgrep service-runner
 }
 
@@ -117,4 +117,17 @@ function test_10_logrotate () {
     assert_grep message "$logfile2"
     assert_grep message "$logfile3"
     assert_grep message "$logfile4"
+}
+
+function test_11_lsb_status () {
+    assert_status 150 "$SERVICE_RUNNER" status test --pidfile=""
+    echo 2147483646 > "$PIDFILE.runner"
+    echo 2147483647 > "$PIDFILE"
+    assert_status 1   "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
+    rm -- "$PIDFILE.runner" "$PIDFILE"
+    assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" ./examples/long_running_service.sh
+    assert_status 0 "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
+    assert_ok       "$SERVICE_RUNNER" stop   test --pidfile="$PIDFILE"
+    assert_status 3 "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
+    assert_fail pgrep service-runner
 }

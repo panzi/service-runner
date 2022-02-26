@@ -39,6 +39,11 @@ size_t dirend(const char *path) {
 }
 
 char *abspath(const char *path) {
+    if (path == NULL || !*path) {
+        errno = EINVAL;
+        return NULL;
+    }
+
     char *tmp = realpath(path, NULL);
     if (tmp != NULL || errno != ENOENT) {
         return tmp;

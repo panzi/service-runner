@@ -24,7 +24,7 @@ const struct option status_options[] = {
 
 int command_status(int argc, char *argv[]) {
     if (argc < 2) {
-        return 1;
+        return 150;
     }
 
     const char *pidfile = NULL;
@@ -43,7 +43,7 @@ int command_status(int argc, char *argv[]) {
 
             case '?':
                 short_usage(argc, argv);
-                return 1;
+                return 150;
         }
     }
 
@@ -72,7 +72,7 @@ int command_status(int argc, char *argv[]) {
             break;
 
         case ABS_PATH_ERR:
-            status = 1;
+            status = 150;
             goto cleanup;
     }
 
@@ -81,7 +81,7 @@ int command_status(int argc, char *argv[]) {
         pidfile_runner = malloc(pidfile_runner_size);
         if (pidfile_runner == NULL) {
             fprintf(stderr, "*** error: malloc: %s\n", strerror(errno));
-            status = 1;
+            status = 150;
             goto cleanup;
         }
 
@@ -89,7 +89,7 @@ int command_status(int argc, char *argv[]) {
         assert(count >= 0 && (size_t)count == pidfile_runner_size - 1); (void)count;
     }
 
-    pid_t runner_pid = 0;
+    pid_t runner_pid  = 0;
     pid_t service_pid = 0;
     bool pidfile_runner_ok = read_pidfile(pidfile_runner, &runner_pid) == 0;
     bool pidfile_ok        = read_pidfile(pidfile, &service_pid) == 0;
@@ -100,25 +100,33 @@ int command_status(int argc, char *argv[]) {
         if (kill(runner_pid, 0) == 0) {
             runner_pid_ok = true;
         } else {
-            status = 2;
-            fprintf(stderr, "%s: error: pidfile %s exists, but service-runner PID %d does not\n", name, pidfile_runner, runner_pid);
+            fprintf(stderr, "%s: error: service-runner pidfile %s exists, but PID %d does not\n", name, pidfile_runner, runner_pid);
         }
     }
-    
+
     if (pidfile_ok) {
         if (kill(service_pid, 0) == 0) {
             service_pid_ok = true;
         } else {
-            status = 3;
-            fprintf(stderr, "%s: error: pidfile %s exists, but service PID %d does not\n", name, pidfile, service_pid);
+            fprintf(stderr, "%s: error: service pidfile %s exists, but PID %d does not\n", name, pidfile, service_pid);
         }
     }
 
-    if (!pidfile_runner_ok && !pidfile_ok) {
+    // Trying to map LSB service status exit codes to what I do here.
+    // https://refspecs.linuxbase.org/LSB_3.0.0/LSB-PDA/LSB-PDA/iniscrptact.html
+    if (!runner_pid_ok && !service_pid_ok) {
         fprintf(stderr, "%s is not running\n", name);
-        status = 1;
-    } else if (pidfile_runner_ok && pidfile_ok && runner_pid_ok && service_pid_ok) {
+        status = pidfile_ok || pidfile_runner_ok ? 1 : 3;
+    } else if (runner_pid_ok && service_pid_ok) {
         printf("%s is running\n", name);
+        status = 0;
+    } else if (!runner_pid_ok && service_pid_ok) {
+        fprintf(stderr, "%s is running, but it's service-runner is not\n", name);
+        status = 1; // maybe?
+    } else if (runner_pid_ok && !service_pid_ok) {
+        fprintf(stderr, "%s is not running, but it's service-runner is.\n", name);
+        fprintf(stderr, "This means the service is probably currently (re)starting.\n");
+        status = pidfile_ok ? 1 : 4; // maybe?
     }
 
 cleanup:
