@@ -139,8 +139,8 @@ function run_test_suit () {
         else
             fail_count=$((fail_count+1))
             printf -- "$cr%s${RED}%$((cols-prefix_len))s${NORMAL}\n" "$prefix" FAIL
-            echo "$out" >&2
-            echo >&2
+            echo "$out"
+            echo
         fi
 
         after_test

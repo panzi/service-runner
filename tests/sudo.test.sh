@@ -15,6 +15,7 @@ function test_01_user_group () {
     assert_ok test "$expected_uid" -ne "$UID"
     assert_ok test "$expected_gid" -ne "$GID"
     assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --user="$user" --group="$group" --logfile="$LOGFILE" ./examples/long_running_service.sh 1
+    sleep 0.5
     assert_ok "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
     pid=$(cat -- "$PIDFILE")
     assert_ok test -n "$pid"
@@ -37,6 +38,7 @@ function test_02_chown_logfile () {
     assert_ok test "$expected_uid" -ne "$UID"
     assert_ok test "$expected_gid" -ne "$(stat -c %g /proc/$$)"
     assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --user="$user" --group="$group" --logfile="$LOGFILE" --chown-logfile ./examples/long_running_service.sh 1
+    sleep 0.5
     assert_ok test "$(stat -c %u "$LOGFILE")" -eq "$expected_uid"
     assert_ok test "$(stat -c %g "$LOGFILE")" -eq "$expected_gid"
     assert_ok   "$SERVICE_RUNNER" stop   test --pidfile="$PIDFILE"
