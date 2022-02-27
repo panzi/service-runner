@@ -14,9 +14,9 @@ export SERVICE_RUNNER=./build/bin/service-runner
 . tests/assert.sh
 
 if pids=$(pgrep service-runner); then
-    echo "${RED}service-runner procress is active!${NORMAL}" >&2
-    echo "$pids" | sed 's/^/    /' >&2
-    echo "You might want to run the tests in an isolated environment like docker or chroot." >&2
+    echo "${RED}service-runner procress is active!${NORMAL}"
+    echo "$pids" | sed 's/^/    /'
+    echo "You might want to run the tests in an isolated environment like docker or chroot."
     exit 1
 fi
 
@@ -24,14 +24,14 @@ function after_test () {
     if [[ -n "$PIDFILE" ]]; then
         if [[ -e "$PIDFILE.runner" ]]; then
             echo
-            echo "${RED}pidfile remained after test: $PIDFILE.runner${NORMAL}" >&2
+            echo "${RED}pidfile remained after test: $PIDFILE.runner${NORMAL}"
             pid=$(cat "$PIDFILE.runner" 2>/dev/null || true)
             if [[ -n "$pid" ]]; then
                 kill -SIGTERM "$pid" || true
                 n=0
                 while kill -0 "$pid" 2>/dev/null; do
                     if [[ "$n" -ge "$MAX_TRY" ]]; then
-                        echo "${RED}process $pid did not go away!${NORMAL}" >&2
+                        echo "${RED}process $pid did not go away!${NORMAL}"
                         exit 1
                     fi
                     sleep 1
@@ -42,14 +42,14 @@ function after_test () {
 
         if [[ -e "$PIDFILE" ]]; then
             echo
-            echo "${RED}pidfile remained after test: $PIDFILE${NORMAL}" >&2
+            echo "${RED}pidfile remained after test: $PIDFILE${NORMAL}"
             pid=$(cat "$PIDFILE" 2>/dev/null || true)
             if [[ -n "$pid" ]]; then
                 kill -SIGTERM "$pid" || true
                 n=0
                 while kill -0 "$pid" 2>/dev/null; do
                     if [[ "$n" -ge "$MAX_TRY" ]]; then
-                        echo "${RED}process $pid did not go away!${NORMAL}" >&2
+                        echo "${RED}process $pid did not go away!${NORMAL}"
                         exit 1
                     fi
                     sleep 1
@@ -60,13 +60,13 @@ function after_test () {
 
         if pids=$(pgrep service-runner); then
             echo
-            echo "${RED}service-runner procress remained active after test! sending SIGTERM...${NORMAL}" >&2
+            echo "${RED}service-runner procress remained active after test! sending SIGTERM...${NORMAL}"
             kill -SIGTERM $pids || true
             n=0
             while kill -0 $pids 2>/dev/null; do
                 if [[ "$n" -ge "$MAX_TRY" ]]; then
-                    echo "${RED}There are still service-runner procresses, giving up:${NORMAL}" >&2
-                    echo "$pids" | sed 's/^/    /' >&2
+                    echo "${RED}There are still service-runner procresses, giving up:${NORMAL}"
+                    echo "$pids" | sed 's/^/    /'
                     exit 1
                 fi
                 sleep 1
