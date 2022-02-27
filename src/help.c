@@ -29,7 +29,7 @@
         "           --chown-logfile             Change owner of the logfile to user/group specified by --user/--group.\n"       \
         "       -u, --user=USER                 Run service as USER (name or UID).\n"                                           \
         "       -g, --group=GROUP               Run service as GROUP (name or GID).\n"                                          \
-        "       -N, --priority=PRIORITY         Run service under process scheduling priority PRIORITY. From -20 (maximum priority) to +19 (minimum priority).\n" \
+        "       -N, --priority=PRIORITY         Run service and service-runner(!) under process scheduling priority PRIORITY. From -20 (maximum priority) to +19 (minimum priority).\n" \
         "       -k, --umask=UMASK               Run service with umask UMASK. Octal values only.\n"                             \
         "           --crash-sleep=SECONDS       Wait SECONDS before restarting service. default: 1\n"                           \
         "           --crash-report=COMMAND      Run `COMMAND NAME CODE STATUS LOGFILE` if the service crashed.\n"               \

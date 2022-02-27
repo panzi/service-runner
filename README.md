@@ -58,9 +58,10 @@ COMMANDS:
                                        specified by --user/--group.
        -u, --user=USER                 Run service as USER (name or UID).
        -g, --group=GROUP               Run service as GROUP (name or GID).
-       -N, --priority=PRIORITY         Run service under process scheduling 
-                                       priority PRIORITY. From -20 (maximum 
-                                       priority) to +19 (minimum priority).
+       -N, --priority=PRIORITY         Run service and service-runner(!) under 
+                                       process scheduling priority PRIORITY. 
+                                       From -20 (maximum priority) to +19 
+                                       (minimum priority).
        -k, --umask=UMASK               Run service with umask UMASK. Octal 
                                        values only.
            --crash-sleep=SECONDS       Wait SECONDS before restarting service. 

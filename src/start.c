@@ -536,15 +536,54 @@ int command_start(int argc, char *argv[]) {
     }
 
     if (set_priority) {
+        // XXX: I just do not understand the getrlimit() interface. It always returns rlim.rlim_cur == 0,
+        //      which is outside of the range defined in the man-page.
+        /*
         struct rlimit rlim;
         if (getrlimit(RLIMIT_NICE, &rlim) != 0) {
             fprintf(stderr, "*** error: getrlimit(RLIMIT_NICE, &rlim): %s\n", strerror(errno));
             return 1;
         }
 
-        if (rlim.rlim_cur > priority) {
-            errno = EPERM;
-            fprintf(stderr, "*** error: cannot set process priority to %d: %s\n", priority, strerror(errno));
+        if (rlim.rlim_cur != RLIM_INFINITY) {
+            long nice_limit = 20 - (long)rlim.rlim_cur;
+            fprintf(stderr, "rlim_cur: %ld\npriority: %d\n", nice_limit, priority);
+            if (nice_limit > (long)priority) {
+                errno = EPERM;
+                fprintf(stderr, "*** error: cannot set process priority of service to %d, soft limit is %ld: %s\n", priority, nice_limit, strerror(errno));
+                return 1;
+            }
+        }
+        //*/
+
+        // I thought instead I can temprarily try to set the priority to the target value and
+        // if successful reset it again, but it might not be possible to raise the priority
+        // value again.
+        /*
+        errno = 0;
+        int old_priority = getpriority(PRIO_PROCESS, 0);
+        if (old_priority == -1 && errno != 0) {
+            fprintf(stderr, "*** error: cannot get current process priority: %s\n", strerror(errno));
+            return 1;
+        }
+
+        if (old_priority != priority) {
+            if (setpriority(PRIO_PROCESS, 0, priority) != 0) {
+                fprintf(stderr, "*** error: cannot set process priority of service to %d: %s\n", priority, strerror(errno));
+                return 1;
+            }
+
+            if (setpriority(PRIO_PROCESS, 0, old_priority) != 0) {
+                fprintf(stderr, "*** error: cannot reset process priority of service-runner to %d: %s\n", old_priority, strerror(errno));
+                return 1;
+            }
+        }
+        //*/
+
+        // So instead I simply set the priority value already here and the service-runner process
+        // will also run at the given priority.
+        if (setpriority(PRIO_PROCESS, 0, priority) != 0) {
+            fprintf(stderr, "*** error: cannot set process priority of service to %d: %s\n", priority, strerror(errno));
             return 1;
         }
     }
@@ -725,6 +764,12 @@ int command_start(int argc, char *argv[]) {
     }
 
     {
+        if (write_pidfile(pidfile_runner, getpid()) != 0) {
+            fprintf(stderr, "*** error: write_pidfile(\"%s\", %u): %s\n", pidfile_runner, getpid(), strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
+
         // setup standard I/O
         if (close(STDIN_FILENO) != 0 && errno != EBADFD) {
             fprintf(stderr, "*** error: close(STDIN_FILENO): %s\n", strerror(errno));
@@ -763,12 +808,6 @@ int command_start(int argc, char *argv[]) {
         fflush(stderr);
         if (dup2(logfile_fd, STDERR_FILENO) == -1) {
             fprintf(stderr, "*** error: dup2(logfile_fd, STDERR_FILENO): %s\n", strerror(errno));
-            status = 1;
-            goto cleanup;
-        }
-
-        if (write_pidfile(pidfile_runner, getpid()) != 0) {
-            fprintf(stderr, "*** error: write_pidfile(\"%s\", %u): %s\n", pidfile_runner, getpid(), strerror(errno));
             status = 1;
             goto cleanup;
         }
@@ -825,14 +864,17 @@ int command_start(int argc, char *argv[]) {
                 goto cleanup;
             }
 
-            if (set_priority && setpriority(PRIO_PROCESS, 0, priority) != 0) {
-                fprintf(stderr, "*** error: (child) setpriority(PRIO_PROCESS, 0, %d): %s\n", priority, strerror(errno));
-                status = 1;
-                if (do_logrotate) {
-                    close(pipefd[PIPE_WRITE]);
-                }
-                goto cleanup;
-            }
+            // Because I don't know how to check if the target priority value is
+            // allowed I have to already set it for the whole service-runner
+            // process. (See above.)
+            // if (set_priority && setpriority(PRIO_PROCESS, 0, priority) != 0) {
+            //     fprintf(stderr, "*** error: (child) setpriority(PRIO_PROCESS, 0, %d): %s\n", priority, strerror(errno));
+            //     status = 1;
+            //     if (do_logrotate) {
+            //         close(pipefd[PIPE_WRITE]);
+            //     }
+            //     goto cleanup;
+            // }
 
             if (set_umask) {
                 umask(umask_value);
