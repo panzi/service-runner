@@ -151,9 +151,6 @@ function test_13_set_illegal_priority () {
 
     assert_fail "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" --priority=+20 ./examples/long_running_service.sh
     assert_fail "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" --priority=-21 ./examples/long_running_service.sh
-    echo "before ulimit -Se: $(ulimit -Se)"
-    ulimit -Se-15
-    echo "after ulimit -Se: $(ulimit -Se)"
     assert_fail "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" --priority=-20 ./examples/long_running_service.sh
 }
 
