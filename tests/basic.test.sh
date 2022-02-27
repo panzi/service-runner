@@ -143,7 +143,21 @@ function test_12_set_priority () {
     assert_fail pgrep service-runner
 }
 
-function test_13_set_umask () {
+function test_13_set_illegal_priority () {
+    assert_ok   "$SERVICE_RUNNER" start  test --pidfile="$PIDFILE" --logfile="$LOGFILE" --priority=+10 ./examples/long_running_service.sh
+    assert_ok   "$SERVICE_RUNNER" stop   test --pidfile="$PIDFILE"
+    assert_fail "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
+    assert_fail pgrep service-runner
+
+    assert_fail "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" --priority=+20 ./examples/long_running_service.sh
+    assert_fail "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" --priority=-21 ./examples/long_running_service.sh
+
+    nice_soft_limit=$(grep 'Max nice priority' "/proc/$$/limits" | awk '{print $4}')
+    assert_ok test -n "$nice_soft_limit"
+    assert_fail "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" --priority=$((nice_soft_limit-1)) ./examples/long_running_service.sh
+}
+
+function test_14_set_umask () {
     assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" --umask=345 ./examples/long_running_service.sh
     sleep 0.5
     pid=$(cat "$PIDFILE")

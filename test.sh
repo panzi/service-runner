@@ -136,6 +136,10 @@ function run_test_suit () {
         if out=$(bash -eo pipefail -c ". tests/assert.sh; . $(printf %q "$test_file"); $(printf %q "test_$test_func")" 2>&1); then
             success_count=$((success_count+1))
             printf -- "$cr%s${GREEN}%$((cols-prefix_len))s${NORMAL}\n" "$prefix" PASS
+
+            if [[ -e "$LOGFILE" ]]; then
+                rm -- "$LOGFILE"
+            fi
         else
             fail_count=$((fail_count+1))
             printf -- "$cr%s${RED}%$((cols-prefix_len))s${NORMAL}\n" "$prefix" FAIL

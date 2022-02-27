@@ -29,6 +29,12 @@ function quote_all () {
 }
 
 function assert_ok () {
+    local stdout_file
+    local stderr_file
+    local status
+    local stdout
+    local stderr
+
     stdout_file=/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.assert_ok.stdout
     stderr_file=/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.assert_ok.stderr
     status=0
@@ -50,9 +56,17 @@ function assert_ok () {
         fi
         return 1
     fi
+
+    rm -- "$stdout_file" "$stderr_file" 2>/dev/null || true
 }
 
 function assert_fail () {
+    local stdout_file
+    local stderr_file
+    local status
+    local stdout
+    local stderr
+
     stdout_file=/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.assert_fail.stdout
     stderr_file=/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.assert_fail.stderr
     status=0
@@ -74,10 +88,17 @@ function assert_fail () {
         fi
         return 1
     fi
+
+    rm -- "$stdout_file" "$stderr_file" 2>/dev/null || true
 }
 
 function assert_status () {
-    expected_status=$1
+    local stdout_file
+    local stderr_file
+    local status
+    local stdout
+    local stderr
+    local expected_status=$1
     shift
 
     stdout_file=/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.assert_status.stdout
@@ -102,6 +123,8 @@ function assert_status () {
         fi
         return 1
     fi
+
+    rm -- "$stdout_file" "$stderr_file" 2>/dev/null || true
 }
 
 function assert_streq () {
@@ -113,8 +136,8 @@ function assert_streq () {
 }
 
 function assert_grep () {
-    pattern=$1
-    filename=$2
+    local pattern=$1
+    local filename=$2
 
     if ! grep -q -- "$pattern" "$filename"; then
         echo "assertion failed in $CURRENT_TEST: assert_file_grep" >&2
@@ -125,8 +148,8 @@ function assert_grep () {
 }
 
 function assert_grepv () {
-    pattern=$1
-    filename=$2
+    local pattern=$1
+    local filename=$2
 
     if ! grep -q -v -- "$pattern" "$filename"; then
         echo "assertion failed in $CURRENT_TEST: assert_file_grepv" >&2
@@ -137,9 +160,16 @@ function assert_grepv () {
 }
 
 function assert_run () {
-    expected_status=$1
-    expected_stdout=$2
-    expected_stderr=$3
+    local stdout_file
+    local stderr_file
+    local status
+    local stdout
+    local stderr
+
+    local expected_status=$1
+    local expected_stdout=$2
+    local expected_stderr=$3
+    local assert_status=0
 
     shift 3
 
@@ -150,7 +180,6 @@ function assert_run () {
     stdout=$(cat "$stdout_file")
     stderr=$(cat "$stderr_file")
 
-    assert_status=0
     if [[ "$status" -ne "$expected_status" ]]; then
         if [[ "$assert_status" -eq 0 ]]; then
             echo "assertion failed in $CURRENT_TEST: assert_run $*" >&2
@@ -176,6 +205,10 @@ function assert_run () {
         fi
         echo "stderr missmatch:" >&2
         diff --color=always -u <"$stderr_file" <(echo -n "$stderr") | sed 's/^/    /' >&2
+    fi
+
+    if [[ "$assert_status" -eq 0 ]]; then
+        rm -- "$stdout_file" "$stderr_file" 2>/dev/null || true
     fi
 
     return "$assert_status"
