@@ -1036,7 +1036,7 @@ int command_start(int argc, char *argv[]) {
             if (service_pidfd == -1) {
                 // for systems that don't support pidfd
                 pollfds[POLLFD_PID ].revents = 0;
-                if (signal(SIGCHLD, handle_child) != 0) {
+                if (signal(SIGCHLD, handle_child) == SIG_ERR) {
                     fprintf(stderr, "*** error: signal(SIGCHLD, handle_child): %s\n", strerror(errno));
                 }
             }
