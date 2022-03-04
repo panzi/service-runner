@@ -660,10 +660,11 @@ int command_start(int argc, char *argv[]) {
         // checking for existing process and trying to deal with it
         pid_t runner_pid = 0;
         if (read_pidfile(pidfile_runner, &runner_pid) == 0) {
-            if (kill(runner_pid, 0) == 0) {
+            errno = 0;
+            if (kill(runner_pid, 0) == 0 || errno == EPERM) {
                 fprintf(stderr, "%s is already running\n", name);
                 goto cleanup;
-            } else {
+            } else if (errno == ESRCH) {
                 fprintf(stderr, "*** error: %s exists, but PID %d doesn't exist.\n", pidfile_runner, runner_pid);
                 pid_t other_pid = 0;
                 if (read_pidfile(pidfile, &other_pid) == 0) {
@@ -686,6 +687,10 @@ int command_start(int argc, char *argv[]) {
                     status = 1;
                     goto cleanup;
                 }
+            } else {
+                fprintf(stderr, "*** error: kill(%d, 0): %s\n", runner_pid, strerror(errno));
+                status = 1;
+                goto cleanup;
             }
         }
     }

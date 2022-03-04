@@ -286,7 +286,8 @@ int command_stop(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    if (kill(pid, 0) == 0) {
+    errno = 0;
+    if (kill(pid, 0) == 0 || errno == EPERM) {
         // Process might be a zombie here.
         // Sleep half a second to give parent of the process or init
         // one more chance to wait for it.
@@ -296,7 +297,7 @@ int command_stop(int argc, char *argv[]) {
         };
         nanosleep(&wait_time, NULL);
 
-        if (kill(pid, 0) == 0) {
+        if (kill(pid, 0) == 0 || errno == EPERM) {
             fprintf(stderr, "*** error: waiting for %s PID %d: poll() on pidfd returned successful, but process is still running\n", which, pid);
             fprintf(stderr, "This might mean the process is a zombie and not yet waited for by it's parent/init, maybe because of heavy system load?\n");
             status = 1;

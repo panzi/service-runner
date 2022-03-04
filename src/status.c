@@ -97,18 +97,28 @@ int command_status(int argc, char *argv[]) {
     bool service_pid_ok = false;
 
     if (pidfile_runner_ok) {
-        if (kill(runner_pid, 0) == 0) {
+        errno = 0;
+        if (kill(runner_pid, 0) == 0 || errno == EPERM) {
             runner_pid_ok = true;
-        } else {
+        } else if (errno == ESRCH) {
             fprintf(stderr, "%s: error: service-runner pidfile %s exists, but PID %d does not\n", name, pidfile_runner, runner_pid);
+        } else {
+            fprintf(stderr, "*** error: kill(%d, 0): %s\n", runner_pid, strerror(errno));
+            status = 150;
+            goto cleanup;
         }
     }
 
     if (pidfile_ok) {
-        if (kill(service_pid, 0) == 0) {
+        errno = 0;
+        if (kill(service_pid, 0) == 0 || errno == EPERM) {
             service_pid_ok = true;
-        } else {
+        } else if (errno == ESRCH) {
             fprintf(stderr, "%s: error: service pidfile %s exists, but PID %d does not\n", name, pidfile, service_pid);
+        } else {
+            fprintf(stderr, "*** error: kill(%d, 0): %s\n", runner_pid, strerror(errno));
+            status = 150;
+            goto cleanup;
         }
     }
 
