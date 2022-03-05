@@ -31,6 +31,8 @@ function test_03_restart_service () {
 }
 
 function test_04_terminated_service () {
+    local pid
+
     assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" ./examples/long_running_service.sh 0.5
     sleep 0.5
     assert_grep "message" "$LOGFILE"
@@ -45,6 +47,8 @@ function test_04_terminated_service () {
 }
 
 function test_05_killed_service () {
+    local pid
+
     assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" ./examples/long_running_service.sh 0.5
     sleep 0.5
     assert_grep "message" "$LOGFILE"
@@ -103,6 +107,12 @@ function test_09_crash_report () {
 }
 
 function test_10_logrotate () {
+    local LOGFILE
+    local logfile1
+    local logfile2
+    local logfile3
+    local logfile4
+
     LOGFILE="/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.logrotate.%Y-%m-%d_%H-%M-%S.txt"
     logfile1=$(date -d '1 seconds' +"$LOGFILE")
     logfile2=$(date -d '2 seconds' +"$LOGFILE")
@@ -133,6 +143,9 @@ function test_11_lsb_status () {
 }
 
 function test_12_set_priority () {
+    local pid
+    local priority
+
     assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" --priority=5 ./examples/long_running_service.sh
     sleep 0.5
     pid=$(cat "$PIDFILE")
@@ -156,6 +169,9 @@ function test_13_set_illegal_priority () {
 }
 
 function test_14_set_umask () {
+    local pid
+    local umask
+
     assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" --umask=345 ./examples/long_running_service.sh
     sleep 0.5
     pid=$(cat "$PIDFILE")

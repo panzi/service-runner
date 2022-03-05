@@ -6,15 +6,23 @@ set -eo pipefail
 #       These can be passed as TEST_USER and TEST_GROUP environment variables.
 #       Per default www-data will be used for both.
 
+sudo_user=${TEST_USER:-www-data}
+sudo_group=${TEST_GROUP:-www-data}
+
 function test_01_user_group () {
-    user=${TEST_USER:-www-data}
-    group=${TEST_GROUP:-www-data}
-    expected_uid=$(id -u "$user")
-    expected_gid=$(id -g "$group")
-    GID="$(stat -c %g /proc/$$)"
+    local expected_uid
+    local expected_gid
+    local GID
+    local pid
+    local actual_uid
+    local actual_gid
+
+    expected_uid=$(id -u "$sudo_user")
+    expected_gid=$(id -g "$sudo_group")
+    GID="$(stat -c %g "/proc/$$")"
     assert_ok test "$expected_uid" -ne "$UID"
     assert_ok test "$expected_gid" -ne "$GID"
-    assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --user="$user" --group="$group" --logfile="$LOGFILE" ./examples/long_running_service.sh 1
+    assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --user="$sudo_user" --group="$sudo_group" --logfile="$LOGFILE" ./examples/long_running_service.sh 1
     sleep 0.5
     assert_ok "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
     pid=$(cat -- "$PIDFILE")
@@ -31,17 +39,31 @@ function test_01_user_group () {
 }
 
 function test_02_chown_logfile () {
-    user=${TEST_USER:-www-data}
-    group=${TEST_GROUP:-www-data}
-    expected_uid=$(id -u "$user")
-    expected_gid=$(id -g "$group")
+    local expected_uid
+    local expected_gid
+
+    expected_uid=$(id -u "$sudo_user")
+    expected_gid=$(id -g "$sudo_group")
     assert_ok test "$expected_uid" -ne "$UID"
-    assert_ok test "$expected_gid" -ne "$(stat -c %g /proc/$$)"
-    assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --user="$user" --group="$group" --logfile="$LOGFILE" --chown-logfile ./examples/long_running_service.sh 1
+    assert_ok test "$expected_gid" -ne "$(stat -c %g "/proc/$$")"
+    assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --user="$sudo_user" --group="$sudo_group" --logfile="$LOGFILE" --chown-logfile ./examples/long_running_service.sh 1
     sleep 0.5
     assert_ok test "$(stat -c %u "$LOGFILE")" -eq "$expected_uid"
     assert_ok test "$(stat -c %g "$LOGFILE")" -eq "$expected_gid"
     assert_ok   "$SERVICE_RUNNER" stop   test --pidfile="$PIDFILE"
     assert_fail "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
+    assert_fail pgrep service-runner
+}
+
+function test_03_status_as_user_of_root_service () {
+    local expected_uid
+    local expected_gid
+
+    assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" ./examples/long_running_service.sh
+    assert_status 0                                       "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
+    assert_status 0 sudo -u "$sudo_user" -g "$sudo_group" "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
+    assert_ok                                             "$SERVICE_RUNNER" stop   test --pidfile="$PIDFILE"
+    assert_status 3                                       "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
+    assert_status 3 sudo -u "$sudo_user" -g "$sudo_group" "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
     assert_fail pgrep service-runner
 }
