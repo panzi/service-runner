@@ -1,4 +1,5 @@
 #include <sys/ioctl.h>
+#include <sys/resource.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
@@ -11,6 +12,36 @@
 #define WS_ROW_DEFAULT 80
 #define WS_XPIXEL_DEFAULT (80 *  8)
 #define WS_YPIXEL_DEFAULT (40 * 14)
+
+#ifdef RLIMIT_NICE
+    #define RLIMIT_NICE_STR ", NICE"
+#else
+    #define RLIMIT_NICE_STR
+#endif
+
+#ifdef RLIMIT_RTPRIO
+    #define RLIMIT_RTPRIO_STR ", RTPRIO"
+#else
+    #define RLIMIT_RTPRIO_STR
+#endif
+
+#ifdef RLIMIT_RTTIME
+    #define RLIMIT_RTTIME_STR ", RTTIME"
+#else
+    #define RLIMIT_RTTIME_STR
+#endif
+
+#ifdef RLIMIT_SIGPENDING
+    #define RLIMIT_SIGPENDING_STR ", SIGPENDING"
+#else
+    #define RLIMIT_SIGPENDING_STR
+#endif
+
+#ifdef RLIMIT_STACK
+    #define RLIMIT_STACK_STR ", STACK"
+#else
+    #define RLIMIT_STACK_STR
+#endif
 
 #define HELP_OPT_PIDFILE \
         "       -p, --pidfile=FILE              Use FILE as the pidfile. default: /var/run/NAME.pid\n"
@@ -30,6 +61,12 @@
         "       -u, --user=USER                 Run service as USER (name or UID).\n"                                           \
         "       -g, --group=GROUP               Run service as GROUP (name or GID).\n"                                          \
         "       -N, --priority=PRIORITY         Run service and service-runner(!) under process scheduling priority PRIORITY. From -20 (maximum priority) to +19 (minimum priority).\n" \
+        "       -r, --rlimit=RES:SOFT[:HARD]    Run service with given limits. This option can be defined multiple times. SOFT/HARD may be an integer or \"INFINITY\". RES may be an integer or one of these names: " \
+                                                "AS, CORE, CPU, DATA, FSIZE, LOCKS, MEMLOCK, MSGQUEUE" RLIMIT_NICE_STR          \
+                                                ", NOFILE, NPROC, RSS" RLIMIT_RTPRIO_STR RLIMIT_RTTIME_STR                      \
+                                                RLIMIT_SIGPENDING_STR RLIMIT_STACK_STR "\n"                                     \
+        "                                       Note that it is not checked if calling setrlimit() in the child process will succeed before forking the child. This means if it doesn't succeed there will be a crash-restart-loop.\n" \
+        "                                       See: man setrlimit\n"                                                           \
         "       -k, --umask=UMASK               Run service with umask UMASK. Octal values only.\n"                             \
         "           --crash-sleep=SECONDS       Wait SECONDS before restarting service. default: 1\n"                           \
         "           --crash-report=COMMAND      Run `COMMAND NAME CODE STATUS LOGFILE` if the service crashed.\n"               \

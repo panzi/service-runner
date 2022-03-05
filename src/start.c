@@ -27,6 +27,7 @@
 #include <assert.h>
 #include <poll.h>
 #include <spawn.h>
+#include <inttypes.h>
 
 #include "service-runner.h"
 
@@ -40,6 +41,145 @@
 
 extern char **environ;
 
+struct rlimit_params {
+    int resource;
+    struct rlimit limit;
+};
+
+// Currently there are only 16 different rlimit values anyway.
+#define RLIMITS_GROW ((size_t) 16)
+
+bool parse_rlimit_params(const char *arg, struct rlimit_params *limitptr) {
+    char *endptr = strchr(arg, ':');
+    if (endptr == NULL) {
+        errno = EINVAL;
+        return false;
+    }
+    size_t len = endptr - arg;
+    char buf[16];
+    if (len >= sizeof(buf)) {
+        errno = EINVAL;
+        return false;
+    }
+
+    const char *arg1 = endptr + 1;
+
+    endptr = NULL;
+    long long rlim_cur = strtoll(arg1, &endptr, 10);
+    if (!*arg1 || (*endptr != ':' && *endptr != 0)) {
+        return false;
+    }
+
+    if (endptr == arg1) {
+        endptr = strchr(arg1, ':');
+        if (endptr == NULL) {
+            if (strcasecmp(arg1, "INF") != 0 && strcasecmp(arg1, "INFINITY") != 0) {
+                errno = EINVAL;
+                return false;
+            }
+            endptr = (char*)arg + strlen(arg);
+        } else {
+            size_t len = endptr - arg1;
+            if (len >= sizeof(buf)) {
+                errno = EINVAL;
+                return false;
+            }
+
+            strncpy(buf, arg1, sizeof(buf));
+
+            if (strcasecmp(arg1, "INF") != 0 && strcasecmp(arg1, "INFINITY") != 0) {
+                errno = EINVAL;
+                return false;
+            }
+        }
+
+        rlim_cur = RLIM_INFINITY;
+    }
+
+    bool has_max = *endptr == ':';
+    long long rlim_max = RLIM_INFINITY;
+    if (has_max) {
+        const char *arg2 = endptr + 1;
+        if (strcasecmp(arg2, "INF") != 0 && strcasecmp(arg2, "INFINITY") != 0) {
+            endptr = NULL;
+            rlim_max = strtoll(arg2, &endptr, 10);
+            if (!*arg2 || *endptr) {
+                return false;
+            }
+        }
+    }
+
+    strncpy(buf, arg, sizeof(buf));
+    int resource = -1;
+    if (strcasecmp(buf, "AS") == 0) {
+        resource = RLIMIT_AS;
+    } else if (strcasecmp(buf, "CORE") == 0) {
+        resource = RLIMIT_CORE;
+    } else if (strcasecmp(buf, "CPU") == 0) {
+        resource = RLIMIT_CPU;
+    } else if (strcasecmp(buf, "DATA") == 0) {
+        resource = RLIMIT_DATA;
+    } else if (strcasecmp(buf, "FSIZE") == 0) {
+        resource = RLIMIT_FSIZE;
+    } else if (strcasecmp(buf, "LOCKS") == 0) {
+        resource = RLIMIT_LOCKS;
+    } else if (strcasecmp(buf, "MEMLOCK") == 0) {
+        resource = RLIMIT_MEMLOCK;
+    } else if (strcasecmp(buf, "MSGQUEUE") == 0) {
+        resource = RLIMIT_MSGQUEUE;
+#ifdef RLIMIT_NICE
+    } else if (strcasecmp(buf, "NICE") == 0) {
+        resource = RLIMIT_NICE;
+#endif
+    } else if (strcasecmp(buf, "NOFILE") == 0) {
+        resource = RLIMIT_NOFILE;
+    } else if (strcasecmp(buf, "NPROC") == 0) {
+        resource = RLIMIT_NPROC;
+    } else if (strcasecmp(buf, "RSS") == 0) {
+        resource = RLIMIT_RSS;
+#ifdef RLIMIT_RTPRIO
+    } else if (strcasecmp(buf, "RTPRIO") == 0) {
+        resource = RLIMIT_RTPRIO;
+#endif
+#ifdef RLIMIT_RTTIME
+    } else if (strcasecmp(buf, "RTTIME") == 0) {
+        resource = RLIMIT_RTTIME;
+#endif
+#ifdef RLIMIT_SIGPENDING
+    } else if (strcasecmp(buf, "SIGPENDING") == 0) {
+        resource = RLIMIT_SIGPENDING;
+#endif
+#ifdef RLIMIT_STACK
+    } else if (strcasecmp(buf, "STACK") == 0) {
+        resource = RLIMIT_STACK;
+#endif
+    } else {
+        endptr = NULL;
+        unsigned long value = strtoul(arg, &endptr, 10);
+        if (*endptr != ':' || endptr == arg || value > INT_MAX) {
+            errno = EINVAL;
+            return false;
+        }
+        resource = value;
+    }
+
+    if (!has_max) {
+        struct rlimit lim;
+        if (getrlimit(resource, &lim) != 0) {
+            return false;
+        }
+        rlim_max = lim.rlim_max;
+    }
+
+    if (limitptr != NULL) {
+        limitptr->resource = resource;
+        limitptr->limit.rlim_cur = rlim_cur;
+        limitptr->limit.rlim_max = rlim_max;
+    }
+
+    return true;
+}
+
 enum {
     OPT_START_PIDFILE,
     OPT_START_LOGFILE,
@@ -47,6 +187,7 @@ enum {
     OPT_START_USER,
     OPT_START_GROUP,
     OPT_START_PRIORITY,
+    OPT_START_RLIMIT,
     OPT_START_UMASK,
     // TODO: --procsched and --iosched?
     OPT_START_CRASH_REPORT,
@@ -61,6 +202,7 @@ const struct option start_options[] = {
     [OPT_START_USER]          = { "user",          required_argument, 0, 'u' },
     [OPT_START_GROUP]         = { "group",         required_argument, 0, 'g' },
     [OPT_START_PRIORITY]      = { "priority",      required_argument, 0, 'N' },
+    [OPT_START_RLIMIT]        = { "rlimit",        required_argument, 0, 'r' },
     [OPT_START_UMASK]         = { "umask",         required_argument, 0, 'k' },
     [OPT_START_CRASH_REPORT]  = { "crash-report",  required_argument, 0,  0  },
     [OPT_START_CRASH_SLEEP]   = { "crash-sleep",   required_argument, 0,  0  },
@@ -406,8 +548,23 @@ int command_start(int argc, char *argv[]) {
     int priority    = 0;
     int umask_value = 0;
 
+    struct rlimit_params *rlimits = NULL;
+    size_t rlimits_capacity = 0;
+    size_t rlimits_count    = 0;
+
+    int status = 0;
+    int logfile_fd = -1;
+
+    bool free_pidfile = false;
+    bool free_logfile = false;
+    bool free_command = false;
+    bool cleanup_pidfiles = false;
+
+    char *pidfile_runner = NULL;
+    char logfile_path_buf[PATH_MAX];
+
     for (;;) {
-        int opt = getopt_long(argc - 1, argv + 1, "p:l:u:g:N:k:", start_options, &longind);
+        int opt = getopt_long(argc - 1, argv + 1, "p:l:u:g:N:k:r:", start_options, &longind);
 
         if (opt == -1) {
             break;
@@ -430,7 +587,8 @@ int command_start(int argc, char *argv[]) {
                         unsigned long value = strtoul(optarg, &endptr, 10);
                         if (!*optarg || *endptr || value > UINT_MAX) {
                             fprintf(stderr, "*** error: illegal value for --crash-sleep: %s\n", optarg);
-                            return 1;
+                            status = 1;
+                            goto cleanup;
                         }
                         crash_sleep = value;
                         break;
@@ -460,7 +618,8 @@ int command_start(int argc, char *argv[]) {
                 long value = strtol(optarg, &endptr, 10);
                 if (!*optarg || *endptr || value > 19 || value < -20) {
                     fprintf(stderr, "*** error: illegal value for --priority: %s\n", optarg);
-                    return 1;
+                    status = 1;
+                    goto cleanup;
                 }
                 set_priority = true;
                 priority     = value;
@@ -473,16 +632,50 @@ int command_start(int argc, char *argv[]) {
                 unsigned long value = strtoul(optarg, &endptr, 8);
                 if (!*optarg || *endptr || value > 0777) {
                     fprintf(stderr, "*** error: illegal value for --umask: %s\n", optarg);
-                    return 1;
+                    status = 1;
+                    goto cleanup;
                 }
                 set_umask   = true;
                 umask_value = value;
                 break;
             }
 
+            case 'r':
+            {
+                if (rlimits_count == rlimits_capacity) {
+                    // Currently there are only 16 different rlimit values anyway.
+                    if (SIZE_MAX - RLIMITS_GROW < rlimits_capacity * sizeof(struct rlimit_params)) {
+                        errno = ENOMEM;
+                        fprintf(stderr, "*** error: cannot allocate memory for --rlimit: %s\n", optarg);
+                        status = 1;
+                        goto cleanup;
+                    }
+                    size_t new_capacity = rlimits_capacity + RLIMITS_GROW;
+                    struct rlimit_params *new_rlimits = realloc(rlimits, new_capacity * sizeof(struct rlimit_params));
+                    if (new_rlimits == NULL) {
+                        fprintf(stderr, "*** error: cannot allocate memory for --rlimit: %s\n", optarg);
+                        status = 1;
+                        goto cleanup;
+                    }
+
+                    rlimits = new_rlimits;
+                    rlimits_capacity = new_capacity;
+                }
+
+                if (!parse_rlimit_params(optarg, rlimits + rlimits_count)) {
+                    fprintf(stderr, "*** error: illegal argument for --rlimit: %s\n", optarg);
+                    status = 1;
+                    goto cleanup;
+                }
+
+                ++ rlimits_count;
+                break;
+            }
+
             case '?':
                 short_usage(argc, argv);
-                return 1;
+                status = 1;
+                goto cleanup;
         }
     }
 
@@ -493,7 +686,8 @@ int command_start(int argc, char *argv[]) {
     if (count < 2) {
         fprintf(stderr, "*** error: not enough arguments\n");
         short_usage(argc, argv);
-        return 1;
+        status = 1;
+        goto cleanup;
     }
 
     const char *name = argv[optind ++];
@@ -503,7 +697,8 @@ int command_start(int argc, char *argv[]) {
     if (!is_valid_name(name)) {
         fprintf(stderr, "*** error: illegal name: '%s'\n", name);
         short_usage(argc, argv);
-        return 1;
+        status = 1;
+        goto cleanup;
     }
 
     uid_t uid = (uid_t)-1;
@@ -511,12 +706,14 @@ int command_start(int argc, char *argv[]) {
 
     if (user != NULL && get_uid_from_name(user, &uid) != 0) {
         fprintf(stderr, "*** error: getting user ID for: %s\n", user);
-        return 1;
+        status = 1;
+        goto cleanup;
     }
 
     if (group != NULL && get_gid_from_name(group, &gid) != 0) {
         fprintf(stderr, "*** error: getting group ID for: %s\n", group);
-        return 1;
+        status = 1;
+        goto cleanup;
     }
 
     uid_t selfuid = geteuid();
@@ -527,77 +724,29 @@ int command_start(int argc, char *argv[]) {
 
     if (!can_execute(command, xuid, xgid)) {
         fprintf(stderr, "*** error: file not found or not executable: %s\n", command);
-        return 1;
+        status = 1;
+        goto cleanup;
     }
 
     if (crash_report != NULL && !can_execute(crash_report, selfuid, selfgid)) {
         fprintf(stderr, "*** error: file not found or not executable: %s: %s\n", crash_report, strerror(errno));
-        return 1;
+        status = 1;
+        goto cleanup;
     }
 
     if (set_priority) {
-        // XXX: I just do not understand the getrlimit() interface. It always returns rlim.rlim_cur == 0,
-        //      which is outside of the range defined in the man-page.
-        /*
-        struct rlimit rlim;
-        if (getrlimit(RLIMIT_NICE, &rlim) != 0) {
-            fprintf(stderr, "*** error: getrlimit(RLIMIT_NICE, &rlim): %s\n", strerror(errno));
-            return 1;
-        }
+        // XXX: I just do not understand the getrlimit() interface for RLIMIT_NICE.
+        //      It always returns rlim.rlim_cur == 0, which is outside of the range
+        //      defined in the man-page.
 
-        if (rlim.rlim_cur != RLIM_INFINITY) {
-            long nice_limit = 20 - (long)rlim.rlim_cur;
-            fprintf(stderr, "rlim_cur: %ld\npriority: %d\n", nice_limit, priority);
-            if (nice_limit > (long)priority) {
-                errno = EPERM;
-                fprintf(stderr, "*** error: cannot set process priority of service to %d, soft limit is %ld: %s\n", priority, nice_limit, strerror(errno));
-                return 1;
-            }
-        }
-        //*/
-
-        // I thought instead I can temprarily try to set the priority to the target value and
-        // if successful reset it again, but it might not be possible to raise the priority
-        // value again.
-        /*
-        errno = 0;
-        int old_priority = getpriority(PRIO_PROCESS, 0);
-        if (old_priority == -1 && errno != 0) {
-            fprintf(stderr, "*** error: cannot get current process priority: %s\n", strerror(errno));
-            return 1;
-        }
-
-        if (old_priority != priority) {
-            if (setpriority(PRIO_PROCESS, 0, priority) != 0) {
-                fprintf(stderr, "*** error: cannot set process priority of service to %d: %s\n", priority, strerror(errno));
-                return 1;
-            }
-
-            if (setpriority(PRIO_PROCESS, 0, old_priority) != 0) {
-                fprintf(stderr, "*** error: cannot reset process priority of service-runner to %d: %s\n", old_priority, strerror(errno));
-                return 1;
-            }
-        }
-        //*/
-
-        // So instead I simply set the priority value already here and the service-runner process
-        // will also run at the given priority.
+        // So instead I simply set the priority value already here and the
+        // service-runner process will also run at the given priority.
         if (setpriority(PRIO_PROCESS, 0, priority) != 0) {
             fprintf(stderr, "*** error: cannot set process priority of service to %d: %s\n", priority, strerror(errno));
-            return 1;
+            status = 1;
+            goto cleanup;
         }
     }
-
-    int status = 0;
-    int logfile_fd = -1;
-
-    bool free_pidfile = false;
-    bool free_logfile = false;
-    bool free_command = false;
-    bool cleanup_pidfiles = false;
-
-    char *pidfile_runner = NULL;
-    char logfile_path_buf[PATH_MAX];
 
     if (command[0] != '/') {
         char *buf = abspath(command);
@@ -872,14 +1021,22 @@ int command_start(int argc, char *argv[]) {
             // Because I don't know how to check if the target priority value is
             // allowed I have to already set it for the whole service-runner
             // process. (See above.)
-            // if (set_priority && setpriority(PRIO_PROCESS, 0, priority) != 0) {
-            //     fprintf(stderr, "*** error: (child) setpriority(PRIO_PROCESS, 0, %d): %s\n", priority, strerror(errno));
-            //     status = 1;
-            //     if (do_logrotate) {
-            //         close(pipefd[PIPE_WRITE]);
-            //     }
-            //     goto cleanup;
-            // }
+
+            // Maybe I should do this in the parent, too?
+            // But a user would expect things like RLIMIT_FSIZE to only apply to the service and
+            // not the service runner, i.e. the logfile shouldn't be limited by it.
+            for (size_t index = 0; index < rlimits_count; ++ index) {
+                struct rlimit_params *lim = &rlimits[index];
+                if (setrlimit(lim->resource, &lim->limit) != 0) {
+                    fprintf(stderr, "*** error: setrlimit(%d, { .rlim_cur = %ld, .rlim_max = %ld }): %s\n",
+                        lim->resource,
+                        lim->limit.rlim_cur,
+                        lim->limit.rlim_max,
+                        strerror(errno));
+                    status = 1;
+                    goto cleanup;
+                }
+            }
 
             if (set_umask) {
                 umask(umask_value);
@@ -1030,6 +1187,13 @@ int command_start(int argc, char *argv[]) {
                 goto cleanup;
             }
 
+            // free no longer used memory
+            free(rlimits);
+            rlimits = NULL;
+            rlimits_capacity = 0;
+            rlimits_count    = 0;
+
+            // setup polling
             #define POLLFD_PID  0
             #define POLLFD_PIPE 1
 
@@ -1330,6 +1494,7 @@ cleanup:
     }
 
     free(pidfile_runner);
+    free(rlimits);
 
     if (free_pidfile) {
         free((char*)pidfile);
