@@ -350,6 +350,16 @@ static bool can_read_write(const char *filename, uid_t uid, gid_t gid) {
     return false;
 }
 
+static void signal_premature_exit(pid_t runner_pid) {
+    // This attempts to stop the service-runner process so that an crash-restart-loop
+    // is prevented if the service process doesn't even manage to exec.
+    fprintf(stderr, "*** error: (child) premature exit before execv() or failed execv() -> don't restart\n");
+    if (kill(runner_pid, SIGTERM) != 0) {
+        fprintf(stderr, "*** error: (child) signaling death to service-runner: %s\n",
+            strerror(errno));
+    }
+}
+
 static int get_uid_from_name(const char *username, uid_t *uidptr) {
     if (!*username) {
         errno = EINVAL;
@@ -758,7 +768,7 @@ int command_start(int argc, char *argv[]) {
     if (set_priority) {
         // XXX: I just do not understand the getrlimit() interface for RLIMIT_NICE.
         //      It always returns rlim.rlim_cur == 0, which is outside of the range
-        //      defined in the man-page.
+        //      of values defined in the man-page.
 
         // So instead I simply set the priority value already here and the
         // service-runner process will also run at the given priority.
@@ -914,11 +924,11 @@ int command_start(int argc, char *argv[]) {
         status = 1;
         goto cleanup;
     } else if (pid != 0) {
-        // parent
+        // parent: shell command quitting
         goto cleanup;
     }
 
-    // child
+    // child: service-runner process
     cleanup_pidfiles = true;
     {
         // block signals until forked service process
@@ -1024,11 +1034,12 @@ int command_start(int argc, char *argv[]) {
             status = 1;
             goto cleanup;
         } else if (service_pid == 0) {
-            // child
+            // child: servoce process
             cleanup_pidfiles = false;
 
             if (write_pidfile(pidfile, getpid()) != 0) {
                 fprintf(stderr, "*** error: write_pidfile(\"%s\", %u): %s\n", pidfile, getpid(), strerror(errno));
+                signal_premature_exit(runner_pid);
                 status = 1;
                 goto cleanup;
             }
@@ -1061,6 +1072,7 @@ int command_start(int argc, char *argv[]) {
                         lim->limit.rlim_cur,
                         lim->limit.rlim_max,
                         strerror(errno));
+                    signal_premature_exit(runner_pid);
                     status = 1;
                     goto cleanup;
                 }
@@ -1070,30 +1082,12 @@ int command_start(int argc, char *argv[]) {
                 umask(umask_value);
             }
 
-            // drop _supplementary_ group IDs
-            if (group != NULL && setgroups(0, NULL) != 0) {
-                fprintf(stderr, "*** error: (child) setgroups(0, NULL): %s\n", strerror(errno));
-                status = 1;
-                goto cleanup;
-            }
-
-            if (group != NULL && setgid(gid) != 0) {
-                fprintf(stderr, "*** error: (child) setgid(%u): %s\n", gid, strerror(errno));
-                status = 1;
-                goto cleanup;
-            }
-
-            if (user != NULL && setuid(uid) != 0) {
-                fprintf(stderr, "*** error: (child) setuid(%u): %s\n", uid, strerror(errno));
-                status = 1;
-                goto cleanup;
-            }
-
             if (do_pipe) {
                 if (pipefd[PIPE_WRITE] != STDOUT_FILENO) {
                     fflush(stdout);
                     if (dup2(pipefd[PIPE_WRITE], STDOUT_FILENO) == -1) {
                         fprintf(stderr, "*** error: (child) dup2(pipefd[PIPE_WRITE], STDOUT_FILENO): %s\n", strerror(errno));
+                        signal_premature_exit(runner_pid);
                         status = 1;
                         goto cleanup;
                     }
@@ -1103,6 +1097,7 @@ int command_start(int argc, char *argv[]) {
                     fflush(stderr);
                     if (dup2(pipefd[PIPE_WRITE], STDERR_FILENO) == -1) {
                         fprintf(stderr, "*** error: (child) dup2(pipefd[PIPE_WRITE], STDERR_FILENO): %s\n", strerror(errno));
+                        signal_premature_exit(runner_pid);
                         status = 1;
                         goto cleanup;
                     }
@@ -1124,6 +1119,29 @@ int command_start(int argc, char *argv[]) {
             sigaddset(&mask, SIGCHLD);
             if (sigprocmask(SIG_UNBLOCK, &mask, NULL) != 0) {
                 fprintf(stderr, "*** error: (child) sigprocmask(SIG_UNBLOCK, &mask, NULL): %s\n", strerror(errno));
+                signal_premature_exit(runner_pid);
+                status = 1;
+                goto cleanup;
+            }
+
+            // drop _supplementary_ group IDs
+            if (group != NULL && setgroups(0, NULL) != 0) {
+                fprintf(stderr, "*** error: (child) setgroups(0, NULL): %s\n", strerror(errno));
+                signal_premature_exit(runner_pid);
+                status = 1;
+                goto cleanup;
+            }
+
+            if (group != NULL && setgid(gid) != 0) {
+                fprintf(stderr, "*** error: (child) setgid(%u): %s\n", gid, strerror(errno));
+                signal_premature_exit(runner_pid);
+                status = 1;
+                goto cleanup;
+            }
+
+            if (user != NULL && setuid(uid) != 0) {
+                fprintf(stderr, "*** error: (child) setuid(%u): %s\n", uid, strerror(errno));
+                signal_premature_exit(runner_pid);
                 status = 1;
                 goto cleanup;
             }
@@ -1132,10 +1150,11 @@ int command_start(int argc, char *argv[]) {
             execv(command, command_argv);
 
             fprintf(stderr, "*** error: (child) execv(\"%s\", command_argv): %s\n", command, strerror(errno));
+            signal_premature_exit(runner_pid);
             status = 1;
             goto cleanup;
         } else {
-            // parent
+            // parent: service-runner process
             {
                 // setup signal handling
                 if (signal(SIGTERM, forward_signal) == SIG_ERR) {

@@ -206,3 +206,13 @@ function test_17_logfile_not_limited_by_rlimit_fsize () {
     assert_fail "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
     assert_fail pgrep service-runner
 }
+
+function test_18_prevent_crash_restart_loop_before_exec () {
+    assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" --rlimit=nice:100 ./tests/services/creates_big_log.sh
+    sleep 0.5
+    assert_fail "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
+    assert_grep 'service-runner: received signal 15, forwarding to service PID' "$LOGFILE"
+    assert_grep 'service-runner: \*\*\* error: test exited with error status 1' "$LOGFILE"
+    assert_grep '\*\*\* error: (child) premature exit before execv() or failed execv() -> don'\''t restart' "$LOGFILE"
+    assert_fail pgrep service-runner
+}
