@@ -355,7 +355,7 @@ static void signal_premature_exit(pid_t runner_pid) {
     // is prevented if the service process doesn't even manage to exec.
     fprintf(stderr, "*** error: (child) premature exit before execv() or failed execv() -> don't restart\n");
     if (kill(runner_pid, SIGTERM) != 0) {
-        fprintf(stderr, "*** error: (child) signaling death to service-runner: %s\n",
+        fprintf(stderr, "*** error: (child) signaling premature exit to service-runner: %s\n",
             strerror(errno));
     }
 }
