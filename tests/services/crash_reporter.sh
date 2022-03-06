@@ -31,7 +31,7 @@ echo "[$(date +'%Y-%m-%d %H:%M:%S%z')] CRASH REPORT:" "$@"
     esac
 
     echo
-    echo "Last 40 lines of $logfile:"
+    echo "Last 50 lines of $logfile:"
     echo
     tail -n 50 "$logfile"
 } > "${CRASH_REPORT_FILE:-$DIR/../tmp/crash_report-$(date +'%Y-%m-%d_%H-%M-%S%z').txt}"

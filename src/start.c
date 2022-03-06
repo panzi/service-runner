@@ -15,6 +15,7 @@
 #include <sys/wait.h>
 #include <sys/time.h>
 #include <sys/resource.h>
+// #include <sys/prctl.h>
 #include <signal.h>
 #include <getopt.h>
 #include <limits.h>
@@ -41,6 +42,16 @@
 
 extern char **environ;
 
+// static int cap_get_bound(int cap) {
+//     int result = prctl(PR_CAPBSET_READ, (unsigned long) cap, (unsigned long) 0);
+//     if (result < 0) {
+//         errno = -result;
+//         return -1;
+//     }
+// 
+//     return result;
+// }
+
 struct rlimit_params {
     int resource;
     struct rlimit limit;
@@ -49,15 +60,15 @@ struct rlimit_params {
 // Currently there are only 16 different rlimit values anyway.
 #define RLIMITS_GROW ((size_t) 16)
 
-bool parse_rlimit_params(const char *arg, struct rlimit_params *limitptr) {
+static bool parse_rlimit_params(const char *arg, struct rlimit_params *limitptr) {
     char *endptr = strchr(arg, ':');
     if (endptr == NULL) {
         errno = EINVAL;
         return false;
     }
-    size_t len = endptr - arg;
+    const size_t reslen = endptr - arg;
     char buf[16];
-    if (len >= sizeof(buf)) {
+    if (reslen >= sizeof(buf)) {
         errno = EINVAL;
         return false;
     }
@@ -79,13 +90,14 @@ bool parse_rlimit_params(const char *arg, struct rlimit_params *limitptr) {
             }
             endptr = (char*)arg + strlen(arg);
         } else {
-            size_t len = endptr - arg1;
+            const size_t len = endptr - arg1;
             if (len >= sizeof(buf)) {
                 errno = EINVAL;
                 return false;
             }
 
-            strncpy(buf, arg1, sizeof(buf));
+            memcpy(buf, arg1, len);
+            buf[len] = 0;
 
             if (strcasecmp(arg1, "INF") != 0 && strcasecmp(arg1, "INFINITY") != 0) {
                 errno = EINVAL;
@@ -109,7 +121,9 @@ bool parse_rlimit_params(const char *arg, struct rlimit_params *limitptr) {
         }
     }
 
-    strncpy(buf, arg, sizeof(buf));
+    memcpy(buf, arg, reslen);
+    buf[reslen] = 0;
+
     int resource = -1;
     if (strcasecmp(buf, "AS") == 0) {
         resource = RLIMIT_AS;
@@ -215,7 +229,7 @@ volatile bool running = false;
 volatile bool restart = false;
 volatile bool got_sigchld = false;
 
-bool is_valid_name(const char *name) {
+static bool is_valid_name(const char *name) {
     if (!*name) {
         return false;
     }
@@ -236,7 +250,7 @@ bool is_valid_name(const char *name) {
     return true;
 }
 
-bool can_execute(const char *filename, uid_t uid, gid_t gid) {
+static bool can_execute(const char *filename, uid_t uid, gid_t gid) {
     struct stat meta;
 
     if (stat(filename, &meta) != 0) {
@@ -259,7 +273,7 @@ bool can_execute(const char *filename, uid_t uid, gid_t gid) {
     return false;
 }
 
-bool can_read_write(const char *filename, uid_t uid, gid_t gid) {
+static bool can_read_write(const char *filename, uid_t uid, gid_t gid) {
     struct stat meta;
 
     if (uid == 0 || gid == 0) {
@@ -336,7 +350,7 @@ bool can_read_write(const char *filename, uid_t uid, gid_t gid) {
     return false;
 }
 
-int get_uid_from_name(const char *username, uid_t *uidptr) {
+static int get_uid_from_name(const char *username, uid_t *uidptr) {
     if (!*username) {
         errno = EINVAL;
         return -1;
@@ -397,7 +411,7 @@ int get_uid_from_name(const char *username, uid_t *uidptr) {
     return 0;
 }
 
-int get_gid_from_name(const char *groupname, gid_t *gidptr) {
+static int get_gid_from_name(const char *groupname, gid_t *gidptr) {
     if (!*groupname) {
         errno = EINVAL;
         return -1;
@@ -458,7 +472,7 @@ int get_gid_from_name(const char *groupname, gid_t *gidptr) {
     return 0;
 }
 
-void forward_signal(int sig) {
+static void forward_signal(int sig) {
     if (service_pid == 0) {
         fprintf(stderr, "*** error: received signal %d, but service process is not running -> ignored\n", sig);
         return;
@@ -486,7 +500,7 @@ void forward_signal(int sig) {
     }
 }
 
-void handle_restart(int sig) {
+static void handle_restart(int sig) {
     if (service_pid == 0) {
         fprintf(stderr, "*** error: received signal %d, but service process is not running -> ignored\n", sig);
         return;
@@ -514,7 +528,7 @@ void handle_restart(int sig) {
     }
 }
 
-void handle_child(int sig) {
+static void handle_child(int sig) {
     // for when pidfd is not supported handle child exiting via SIGCHLD and EINTR of poll()
     got_sigchld = true;
 }
@@ -554,11 +568,13 @@ int command_start(int argc, char *argv[]) {
 
     int status = 0;
     int logfile_fd = -1;
+    int pipefd[2] = { -1, -1 };
 
     bool free_pidfile = false;
     bool free_logfile = false;
     bool free_command = false;
     bool cleanup_pidfiles = false;
+    bool rlimit_fsize = false;
 
     char *pidfile_runner = NULL;
     char logfile_path_buf[PATH_MAX];
@@ -644,7 +660,7 @@ int command_start(int argc, char *argv[]) {
             {
                 if (rlimits_count == rlimits_capacity) {
                     // Currently there are only 16 different rlimit values anyway.
-                    if (SIZE_MAX - RLIMITS_GROW < rlimits_capacity * sizeof(struct rlimit_params)) {
+                    if (SIZE_MAX - (RLIMITS_GROW * sizeof(struct rlimit_params)) < rlimits_capacity * sizeof(struct rlimit_params)) {
                         errno = ENOMEM;
                         fprintf(stderr, "*** error: cannot allocate memory for --rlimit: %s\n", optarg);
                         status = 1;
@@ -666,6 +682,11 @@ int command_start(int argc, char *argv[]) {
                     fprintf(stderr, "*** error: illegal argument for --rlimit: %s\n", optarg);
                     status = 1;
                     goto cleanup;
+                }
+
+                if (rlimits[rlimits_count].resource == RLIMIT_FSIZE) {
+                    // we need to pipe to the logfile here too!
+                    rlimit_fsize = true;
                 }
 
                 ++ rlimits_count;
@@ -845,6 +866,7 @@ int command_start(int argc, char *argv[]) {
     }
 
     const bool do_logrotate = strchr(logfile, '%') != NULL;
+    const bool do_pipe = do_logrotate || rlimit_fsize;
     const char *logfile_path;
 
     if (do_logrotate) {
@@ -970,9 +992,10 @@ int command_start(int argc, char *argv[]) {
     cleanup_pidfiles = true;
     running = true;
     while (running) {
-        int pipefd[2] = { -1, -1 };
+        if (do_pipe) {
+            pipefd[PIPE_READ ] = -1;
+            pipefd[PIPE_WRITE] = -1;
 
-        if (do_logrotate) {
             // logging pipe
             // if no log-rotating is done stdout/stderr pipes directly to the logfile, no need for the pipe
             int result = pipe(pipefd);
@@ -998,23 +1021,25 @@ int command_start(int argc, char *argv[]) {
         if (service_pid < 0) {
             fprintf(stderr, "*** error: fork for starting service failed: %s\n", strerror(errno));
             status = 1;
-            if (do_logrotate) {
-                close(pipefd[PIPE_READ]);
-                close(pipefd[PIPE_WRITE]);
-            }
             goto cleanup;
         } else if (service_pid == 0) {
             // child
-            if (do_logrotate && close(pipefd[PIPE_READ]) != 0) {
-                fprintf(stderr, "*** error: (child) close(pipefd[PIPE_READ]): %s\n", strerror(errno));
+            if (do_pipe) {
+                if (close(pipefd[PIPE_READ]) != 0) {
+                    fprintf(stderr, "*** error: (child) close(pipefd[PIPE_READ]): %s\n", strerror(errno));
+                }
+                pipefd[PIPE_READ] = -1;
+            }
+
+            if (close(logfile_fd) != 0) {
+                fprintf(stderr, "*** error: (child) close(logfile_fd): %s\n", strerror(errno));
+            } else {
+                logfile_fd = -1;
             }
 
             if (write_pidfile(pidfile, getpid()) != 0) {
                 fprintf(stderr, "*** error: write_pidfile(\"%s\", %u): %s\n", pidfile, getpid(), strerror(errno));
                 status = 1;
-                if (do_logrotate) {
-                    close(pipefd[PIPE_WRITE]);
-                }
                 goto cleanup;
             }
 
@@ -1022,7 +1047,7 @@ int command_start(int argc, char *argv[]) {
             // allowed I have to already set it for the whole service-runner
             // process. (See above.)
 
-            // Maybe I should do this in the parent, too?
+            // Maybe I should do setrlimit() in the parent, too?
             // But a user would expect things like RLIMIT_FSIZE to only apply to the service and
             // not the service runner, i.e. the logfile shouldn't be limited by it.
             for (size_t index = 0; index < rlimits_count; ++ index) {
@@ -1046,37 +1071,27 @@ int command_start(int argc, char *argv[]) {
             if (group != NULL && setgroups(0, NULL) != 0) {
                 fprintf(stderr, "*** error: (child) setgroups(0, NULL): %s\n", strerror(errno));
                 status = 1;
-                if (do_logrotate) {
-                    close(pipefd[PIPE_WRITE]);
-                }
                 goto cleanup;
             }
 
             if (group != NULL && setgid(gid) != 0) {
                 fprintf(stderr, "*** error: (child) setgid(%u): %s\n", gid, strerror(errno));
                 status = 1;
-                if (do_logrotate) {
-                    close(pipefd[PIPE_WRITE]);
-                }
                 goto cleanup;
             }
 
             if (user != NULL && setuid(uid) != 0) {
                 fprintf(stderr, "*** error: (child) setuid(%u): %s\n", uid, strerror(errno));
                 status = 1;
-                if (do_logrotate) {
-                    close(pipefd[PIPE_WRITE]);
-                }
                 goto cleanup;
             }
 
-            if (do_logrotate) {
+            if (do_pipe) {
                 if (pipefd[PIPE_WRITE] != STDOUT_FILENO) {
                     fflush(stdout);
                     if (dup2(pipefd[PIPE_WRITE], STDOUT_FILENO) == -1) {
                         fprintf(stderr, "*** error: (child) dup2(pipefd[PIPE_WRITE], STDOUT_FILENO): %s\n", strerror(errno));
                         status = 1;
-                        close(pipefd[PIPE_WRITE]);
                         goto cleanup;
                     }
                 }
@@ -1086,7 +1101,6 @@ int command_start(int argc, char *argv[]) {
                     if (dup2(pipefd[PIPE_WRITE], STDERR_FILENO) == -1) {
                         fprintf(stderr, "*** error: (child) dup2(pipefd[PIPE_WRITE], STDERR_FILENO): %s\n", strerror(errno));
                         status = 1;
-                        close(pipefd[PIPE_WRITE]);
                         goto cleanup;
                     }
                 }
@@ -1095,6 +1109,7 @@ int command_start(int argc, char *argv[]) {
                     fprintf(stderr, "*** error: (child) close(pipefd[PIPE_WRITE]): %s\n", strerror(errno));
                     // though, ignore it anyway?
                 }
+                pipefd[PIPE_WRITE] = -1;
             }
 
             // signal masks are preserved across exec*()
@@ -1110,7 +1125,9 @@ int command_start(int argc, char *argv[]) {
                 goto cleanup;
             }
 
+            // start service
             execv(command, command_argv);
+
             fprintf(stderr, "*** error: (child) execv(\"%s\", command_argv): %s\n", command, strerror(errno));
             status = 1;
             goto cleanup;
@@ -1140,10 +1157,11 @@ int command_start(int argc, char *argv[]) {
                 }
             }
 
-            if (do_logrotate && close(pipefd[PIPE_WRITE]) != 0) {
+            if (do_pipe && close(pipefd[PIPE_WRITE]) != 0) {
                 fprintf(stderr, "*** error: (parent) close(pipefd[PIPE_WRITE]): %s\n", strerror(errno));
                 // though, ignore it anyway?
             }
+            pipefd[PIPE_WRITE] = -1;
 
             service_pidfd = pidfd_open(service_pid, 0);
             if (service_pidfd == -1 && errno != ENOSYS) {
@@ -1187,19 +1205,13 @@ int command_start(int argc, char *argv[]) {
                 goto cleanup;
             }
 
-            // free no longer used memory
-            free(rlimits);
-            rlimits = NULL;
-            rlimits_capacity = 0;
-            rlimits_count    = 0;
-
             // setup polling
             #define POLLFD_PID  0
             #define POLLFD_PIPE 1
 
             struct pollfd pollfds[] = {
                 [POLLFD_PID ] = { service_pidfd,     POLLIN, 0 },
-                [POLLFD_PIPE] = { pipefd[PIPE_READ], do_logrotate ? POLLIN : 0, 0 },
+                [POLLFD_PIPE] = { pipefd[PIPE_READ], do_pipe ? POLLIN : 0, 0 },
             };
 
             if (service_pidfd == -1) {
@@ -1232,51 +1244,53 @@ int command_start(int argc, char *argv[]) {
                     }
                 }
 
-                if (do_logrotate) {
+                if (do_pipe) {
                     if (pollfds[POLLFD_PIPE].revents & POLLIN) {
                         // log-handling
-                        time_t now = time(NULL);
-                        struct tm local_now;
-                        char new_logfile_path_buf[PATH_MAX];
+                        if (do_logrotate) {
+                            time_t now = time(NULL);
+                            struct tm local_now;
+                            char new_logfile_path_buf[PATH_MAX];
 
-                        if (localtime_r(&now, &local_now) == NULL) {
-                            fprintf(stderr, "*** error: (parent) getting local time: %s\n", strerror(errno));
-                            status = 1;
-                            goto cleanup;
-                        }
-
-                        if (strftime(new_logfile_path_buf, sizeof(new_logfile_path_buf), logfile, &local_now) == 0) {
-                            fprintf(stderr, "*** error: (parent) cannot format logfile \"%s\": %s\n", logfile, strerror(errno));
-                            status = 1;
-                            goto cleanup;
-                        }
-
-                        if (strcmp(new_logfile_path_buf, logfile_path_buf) != 0) {
-                            int new_logfile_fd = open(new_logfile_path_buf, O_CREAT | O_WRONLY | O_CLOEXEC | O_APPEND, 0644);
-                            if (logfile_fd == -1) {
-                                fprintf(stderr, "*** error: (parent) cannot open logfile: %s: %s\n", new_logfile_path_buf, strerror(errno));
+                            if (localtime_r(&now, &local_now) == NULL) {
+                                fprintf(stderr, "*** error: (parent) getting local time: %s\n", strerror(errno));
+                                status = 1;
+                                goto cleanup;
                             }
 
-                            if (chown_logfile && fchown(new_logfile_fd, xuid, xgid) != 0) {
-                                fprintf(stderr, "*** error: (parent) cannot change owner of logfile: %s: %s\n", new_logfile_path_buf, strerror(errno));
+                            if (strftime(new_logfile_path_buf, sizeof(new_logfile_path_buf), logfile, &local_now) == 0) {
+                                fprintf(stderr, "*** error: (parent) cannot format logfile \"%s\": %s\n", logfile, strerror(errno));
+                                status = 1;
+                                goto cleanup;
                             }
 
-                            if (close(logfile_fd) != 0) {
-                                fprintf(stderr, "*** error: (parent) close(logfile_fd): %s\n", strerror(errno));
-                            }
+                            if (strcmp(new_logfile_path_buf, logfile_path_buf) != 0) {
+                                int new_logfile_fd = open(new_logfile_path_buf, O_CREAT | O_WRONLY | O_CLOEXEC | O_APPEND, 0644);
+                                if (logfile_fd == -1) {
+                                    fprintf(stderr, "*** error: (parent) cannot open logfile: %s: %s\n", new_logfile_path_buf, strerror(errno));
+                                }
 
-                            logfile_fd = new_logfile_fd;
-                            fflush(stdout);
-                            if (dup2(logfile_fd, STDOUT_FILENO) == -1) {
-                                fprintf(stderr, "*** error: (parent) dup2(logfile_fd, STDOUT_FILENO): %s\n", strerror(errno));
-                            }
+                                if (chown_logfile && fchown(new_logfile_fd, xuid, xgid) != 0) {
+                                    fprintf(stderr, "*** error: (parent) cannot change owner of logfile: %s: %s\n", new_logfile_path_buf, strerror(errno));
+                                }
 
-                            fflush(stderr);
-                            if (dup2(logfile_fd, STDERR_FILENO) == -1) {
-                                fprintf(stderr, "*** error: (parent) dup2(logfile_fd, STDERR_FILENO): %s\n", strerror(errno));
-                            }
+                                if (close(logfile_fd) != 0) {
+                                    fprintf(stderr, "*** error: (parent) close(logfile_fd): %s\n", strerror(errno));
+                                }
 
-                            strcpy(logfile_path_buf, new_logfile_path_buf);
+                                logfile_fd = new_logfile_fd;
+                                fflush(stdout);
+                                if (dup2(logfile_fd, STDOUT_FILENO) == -1) {
+                                    fprintf(stderr, "*** error: (parent) dup2(logfile_fd, STDOUT_FILENO): %s\n", strerror(errno));
+                                }
+
+                                fflush(stderr);
+                                if (dup2(logfile_fd, STDERR_FILENO) == -1) {
+                                    fprintf(stderr, "*** error: (parent) dup2(logfile_fd, STDERR_FILENO): %s\n", strerror(errno));
+                                }
+
+                                strcpy(logfile_path_buf, new_logfile_path_buf);
+                            }
                         }
 
                         // handle log messages
@@ -1467,8 +1481,11 @@ int command_start(int argc, char *argv[]) {
                 }
             }
 
-            if (do_logrotate && close(pipefd[PIPE_READ]) != 0) {
-                fprintf(stderr, "*** error: (parent) close(pipefd[PIPE_READ]): %s\n", strerror(errno));
+            if (do_pipe) {
+                if (close(pipefd[PIPE_READ]) != 0) {
+                    fprintf(stderr, "*** error: (parent) close(pipefd[PIPE_READ]): %s\n", strerror(errno));
+                }
+                pipefd[PIPE_READ] = -1;
             }
 
             if (service_pidfd != -1 && close(service_pidfd) != 0) {
@@ -1483,6 +1500,14 @@ int command_start(int argc, char *argv[]) {
     }
 
 cleanup:
+    if (pipefd[PIPE_READ] != -1) {
+        close(pipefd[PIPE_READ]);
+    }
+
+    if (pipefd[PIPE_WRITE] != -1) {
+        close(pipefd[PIPE_WRITE]);
+    }
+
     if (cleanup_pidfiles) {
         if (unlink(pidfile) != 0 && errno != ENOENT) {
             fprintf(stderr, "*** error: unlink(\"%s\"): %s\n", pidfile, strerror(errno));

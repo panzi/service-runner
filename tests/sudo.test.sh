@@ -22,7 +22,7 @@ function test_01_user_group () {
     GID="$(stat -c %g "/proc/$$")"
     assert_ok test "$expected_uid" -ne "$UID"
     assert_ok test "$expected_gid" -ne "$GID"
-    assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --user="$sudo_user" --group="$sudo_group" --logfile="$LOGFILE" ./examples/long_running_service.sh 1
+    assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --user="$sudo_user" --group="$sudo_group" --logfile="$LOGFILE" ./tests/services/long_running_service.sh 1
     sleep 0.5
     assert_ok "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
     pid=$(cat -- "$PIDFILE")
@@ -46,7 +46,7 @@ function test_02_chown_logfile () {
     expected_gid=$(id -g "$sudo_group")
     assert_ok test "$expected_uid" -ne "$UID"
     assert_ok test "$expected_gid" -ne "$(stat -c %g "/proc/$$")"
-    assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --user="$sudo_user" --group="$sudo_group" --logfile="$LOGFILE" --chown-logfile ./examples/long_running_service.sh 1
+    assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --user="$sudo_user" --group="$sudo_group" --logfile="$LOGFILE" --chown-logfile ./tests/services/long_running_service.sh 1
     sleep 0.5
     assert_ok test "$(stat -c %u "$LOGFILE")" -eq "$expected_uid"
     assert_ok test "$(stat -c %g "$LOGFILE")" -eq "$expected_gid"
@@ -59,7 +59,7 @@ function test_03_status_as_user_of_root_service () {
     local expected_uid
     local expected_gid
 
-    assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" ./examples/long_running_service.sh
+    assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" ./tests/services/long_running_service.sh
     assert_status 0                                       "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
     assert_status 0 sudo -u "$sudo_user" -g "$sudo_group" "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
     assert_ok                                             "$SERVICE_RUNNER" stop   test --pidfile="$PIDFILE"

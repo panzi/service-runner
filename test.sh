@@ -7,6 +7,7 @@ DIR=$(dirname -- "$SELF")
 
 cd -- "$DIR"
 
+export LANG=C
 export MAX_COLS=80
 export MAX_TRY=6
 export SERVICE_RUNNER=./build/bin/service-runner
