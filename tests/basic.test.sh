@@ -197,7 +197,7 @@ function test_16_set_illegal_rlimit () {
     assert_fail "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" --rlimit=foo-bar-baz-illegal:4096 ./tests/services/long_running_service.sh
 }
 
-function test_16_logfile_not_limited_by_rlimit_fsize () {
+function test_17_logfile_not_limited_by_rlimit_fsize () {
     assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" --rlimit=fsize:4096 ./tests/services/creates_big_log.sh
     sleep 0.5
     assert_ok "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
