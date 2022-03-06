@@ -61,7 +61,7 @@
         "       -u, --user=USER                 Run service as USER (name or UID).\n"                                           \
         "       -g, --group=GROUP               Run service as GROUP (name or GID).\n"                                          \
         "       -N, --priority=PRIORITY         Run service and service-runner(!) under process scheduling priority PRIORITY. From -20 (maximum priority) to +19 (minimum priority).\n" \
-        "       -r, --rlimit=RES:SOFT[:HARD]    Run service with given limits. This option can be defined multiple times. SOFT/HARD may be an integer or \"INFINITY\". RES may be an integer or one of these names: " \
+        "       -r, --rlimit=RES:SOFT[:HARD]    Run service with given resource limits. This option can be defined multiple times. SOFT/HARD may be an integer or \"INFINITY\". RES may be an integer or one of these names: " \
                                                 "AS, CORE, CPU, DATA, FSIZE, LOCKS, MEMLOCK, MSGQUEUE" RLIMIT_NICE_STR          \
                                                 ", NOFILE, NPROC, RSS" RLIMIT_RTPRIO_STR RLIMIT_RTTIME_STR                      \
                                                 RLIMIT_SIGPENDING_STR RLIMIT_STACK_STR "\n"                                     \

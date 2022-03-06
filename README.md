@@ -26,7 +26,6 @@ Usage
 -----
 
 ```plain
-
 Usage: service-runner start   <name> [options] [--] <command> [argument...]
        service-runner stop    <name> [options]
        service-runner restart <name> [options]
@@ -62,6 +61,20 @@ COMMANDS:
                                        process scheduling priority PRIORITY. 
                                        From -20 (maximum priority) to +19 
                                        (minimum priority).
+       -r, --rlimit=RES:SOFT[:HARD]    Run service with given resource limits. 
+                                       This option can be defined multiple 
+                                       times. SOFT/HARD may be an integer or 
+                                       "INFINITY". RES may be an integer or one
+                                       of these names: AS, CORE, CPU, DATA, 
+                                       FSIZE, LOCKS, MEMLOCK, MSGQUEUE, NICE, 
+                                       NOFILE, NPROC, RSS, RTPRIO, RTTIME, 
+                                       SIGPENDING, STACK
+                                       Note that it is not checked if calling 
+                                       setrlimit() in the child process will 
+                                       succeed before forking the child. This 
+                                       means if it doesn't succeed there will be
+                                       a crash-restart-loop.
+                                       See: man setrlimit
        -k, --umask=UMASK               Run service with umask UMASK. Octal 
                                        values only.
            --crash-sleep=SECONDS       Wait SECONDS before restarting service. 
