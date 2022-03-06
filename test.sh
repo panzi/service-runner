@@ -95,7 +95,6 @@ function run_test_suit () {
     local cols
     local prefix
     local test_name
-    local test_count
 
     TEST_SUIT=$(basename "$test_file" .test.sh)
     export TEST_SUIT
