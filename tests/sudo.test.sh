@@ -60,6 +60,7 @@ function test_03_status_as_user_of_root_service () {
     local expected_gid
 
     assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" ./tests/services/long_running_service.sh
+    sleep 0.5
     assert_status 0                                       "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
     assert_status 0 sudo -u "$sudo_user" -g "$sudo_group" "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
     assert_ok                                             "$SERVICE_RUNNER" stop   test --pidfile="$PIDFILE"
