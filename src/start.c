@@ -226,7 +226,7 @@ const struct option start_options[] = {
 pid_t service_pid = 0;
 int service_pidfd = -1;
 volatile bool running = false;
-volatile bool restart = false;
+volatile bool restart_issued = false;
 volatile bool got_sigchld = false;
 
 static bool is_valid_name(const char *name) {
@@ -509,7 +509,7 @@ static void handle_restart(int sig) {
     assert(getpid() != service_pid);
 
     fprintf(stderr, "service-runner: received signal %d, restarting service...\n", sig);
-    restart = true;
+    restart_issued = true;
 
     if (service_pidfd != -1) {
         if (pidfd_send_signal(service_pidfd, SIGTERM, NULL, 0) != 0) {
@@ -908,7 +908,7 @@ int command_start(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    pid_t pid = fork();
+    const pid_t pid = fork();
     if (pid < 0) {
         fprintf(stderr, "*** error: fork for deamonize failed: %s\n", strerror(errno));
         status = 1;
@@ -919,6 +919,7 @@ int command_start(int argc, char *argv[]) {
     }
 
     // child
+    cleanup_pidfiles = true;
     {
         // block signals until forked service process
         // Can't install the signal handlers in here, because they would
@@ -939,8 +940,9 @@ int command_start(int argc, char *argv[]) {
         }
     }
 
+    const pid_t runner_pid = getpid();
     {
-        if (write_pidfile(pidfile_runner, getpid()) != 0) {
+        if (write_pidfile(pidfile_runner, runner_pid) != 0) {
             fprintf(stderr, "*** error: write_pidfile(\"%s\", %u): %s\n", pidfile_runner, getpid(), strerror(errno));
             status = 1;
             goto cleanup;
@@ -989,7 +991,6 @@ int command_start(int argc, char *argv[]) {
         }
     }
 
-    cleanup_pidfiles = true;
     running = true;
     while (running) {
         if (do_pipe) {
@@ -1024,6 +1025,14 @@ int command_start(int argc, char *argv[]) {
             goto cleanup;
         } else if (service_pid == 0) {
             // child
+            cleanup_pidfiles = false;
+
+            if (write_pidfile(pidfile, getpid()) != 0) {
+                fprintf(stderr, "*** error: write_pidfile(\"%s\", %u): %s\n", pidfile, getpid(), strerror(errno));
+                status = 1;
+                goto cleanup;
+            }
+
             if (do_pipe) {
                 if (close(pipefd[PIPE_READ]) != 0) {
                     fprintf(stderr, "*** error: (child) close(pipefd[PIPE_READ]): %s\n", strerror(errno));
@@ -1035,12 +1044,6 @@ int command_start(int argc, char *argv[]) {
                 fprintf(stderr, "*** error: (child) close(logfile_fd): %s\n", strerror(errno));
             } else {
                 logfile_fd = -1;
-            }
-
-            if (write_pidfile(pidfile, getpid()) != 0) {
-                fprintf(stderr, "*** error: write_pidfile(\"%s\", %u): %s\n", pidfile, getpid(), strerror(errno));
-                status = 1;
-                goto cleanup;
             }
 
             // Because I don't know how to check if the target priority value is
@@ -1348,6 +1351,8 @@ int command_start(int argc, char *argv[]) {
                         fprintf(stderr, "*** error: (parent) waitpid(%d, &service_status, WNOHANG): %s\n", service_pid, strerror(errno));
                     } else {
                         // block signals again until we're ready again
+                        // Should that be done before waitpid()?
+                        // (and unblock again in the other two branches of this if-else-if-block)
                         sigset_t mask;
                         sigemptyset(&mask);
                         sigaddset(&mask, SIGTERM);
@@ -1369,10 +1374,7 @@ int command_start(int argc, char *argv[]) {
 
                             if (param == 0) {
                                 printf("service-runner: %s exited normally\n", name);
-                                if (restart) {
-                                    // don't set running to false
-                                    restart = false;
-                                } else {
+                                if (!restart_issued) {
                                     running = false;
                                 }
                             } else {
@@ -1391,9 +1393,8 @@ int command_start(int argc, char *argv[]) {
 
                                 switch (param) {
                                     case SIGTERM:
-                                        if (restart) {
+                                        if (restart_issued) {
                                             // don't set running to false
-                                            restart = false;
                                             break;
                                         }
                                     case SIGINT:
@@ -1401,12 +1402,17 @@ int command_start(int argc, char *argv[]) {
                                         printf("service-runner: service stopped via signal %d -> don't restart\n", param);
                                         running = false;
                                         break;
+
+                                    default:
+                                        crash = true;
+                                        break;
                                 }
                             }
                         } else {
                             assert(false);
                         }
 
+                        restart_issued = false;
                         service_pid = -1;
 
                         if (crash) {
@@ -1500,14 +1506,6 @@ int command_start(int argc, char *argv[]) {
     }
 
 cleanup:
-    if (pipefd[PIPE_READ] != -1) {
-        close(pipefd[PIPE_READ]);
-    }
-
-    if (pipefd[PIPE_WRITE] != -1) {
-        close(pipefd[PIPE_WRITE]);
-    }
-
     if (cleanup_pidfiles) {
         if (unlink(pidfile) != 0 && errno != ENOENT) {
             fprintf(stderr, "*** error: unlink(\"%s\"): %s\n", pidfile, strerror(errno));
@@ -1531,6 +1529,14 @@ cleanup:
 
     if (free_command) {
         free((char*)command);
+    }
+
+    if (pipefd[PIPE_READ] != -1) {
+        close(pipefd[PIPE_READ]);
+    }
+
+    if (pipefd[PIPE_WRITE] != -1) {
+        close(pipefd[PIPE_WRITE]);
     }
 
     if (logfile_fd != -1) {
