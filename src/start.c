@@ -16,6 +16,7 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 // #include <sys/prctl.h>
+// #include <linux/capability.h>
 #include <signal.h>
 #include <getopt.h>
 #include <limits.h>
@@ -368,7 +369,6 @@ static int get_uid_from_name(const char *username, uid_t *uidptr) {
 
     char *buf = malloc(bufsize);
     if (buf == NULL) {
-        fprintf(stderr, "*** error: malloc(%zu): %s\n", bufsize, strerror(errno));
         return -1;
     }
 
@@ -429,7 +429,6 @@ static int get_gid_from_name(const char *groupname, gid_t *gidptr) {
 
     char *buf = malloc(bufsize);
     if (buf == NULL) {
-        fprintf(stderr, "*** error: malloc(%zu): %s\n", bufsize, strerror(errno));
         return -1;
     }
 
@@ -728,13 +727,13 @@ int command_start(int argc, char *argv[]) {
     gid_t gid = (gid_t)-1;
 
     if (user != NULL && get_uid_from_name(user, &uid) != 0) {
-        fprintf(stderr, "*** error: getting user ID for: %s\n", user);
+        fprintf(stderr, "*** error: getting user ID for %s: %s\n", user, strerror(errno));
         status = 1;
         goto cleanup;
     }
 
     if (group != NULL && get_gid_from_name(group, &gid) != 0) {
-        fprintf(stderr, "*** error: getting group ID for: %s\n", group);
+        fprintf(stderr, "*** error: getting group ID for %s: %s\n", group, strerror(errno));
         status = 1;
         goto cleanup;
     }
