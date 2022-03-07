@@ -320,25 +320,17 @@ static bool can_read_write(const char *filename, uid_t uid, gid_t gid) {
 
     if (meta.st_mode & S_IROTH) {
         can_read = true;
-    }
-
-    if (meta.st_gid == gid && meta.st_mode & S_IRGRP) {
+    } else if (meta.st_gid == gid && meta.st_mode & S_IRGRP) {
         can_read = true;
-    }
-
-    if (meta.st_uid == uid && meta.st_mode & S_IRUSR) {
+    } else if (meta.st_uid == uid && meta.st_mode & S_IRUSR) {
         can_read = true;
     }
 
     if (meta.st_mode & S_IWOTH) {
         can_write = true;
-    }
-
-    if (meta.st_gid == gid && meta.st_mode & S_IWGRP) {
+    } else if (meta.st_gid == gid && meta.st_mode & S_IWGRP) {
         can_write = true;
-    }
-
-    if (meta.st_uid == uid && meta.st_mode & S_IWUSR) {
+    } else if (meta.st_uid == uid && meta.st_mode & S_IWUSR) {
         can_write = true;
     }
 
@@ -482,7 +474,7 @@ static int get_gid_from_name(const char *groupname, gid_t *gidptr) {
     return 0;
 }
 
-static void forward_signal(int sig) {
+static void handles_stop_signal(int sig) {
     if (service_pid == 0) {
         fprintf(stderr, "*** error: received signal %d, but service process is not running -> ignored\n", sig);
         return;
@@ -510,7 +502,7 @@ static void forward_signal(int sig) {
     }
 }
 
-static void handle_restart(int sig) {
+static void handle_restart_signal(int sig) {
     if (service_pid == 0) {
         fprintf(stderr, "*** error: received signal %d, but service process is not running -> ignored\n", sig);
         return;
@@ -940,6 +932,7 @@ int command_start(int argc, char *argv[]) {
         sigemptyset(&mask);
         sigaddset(&mask, SIGHUP);
         sigaddset(&mask, SIGTERM);
+        sigaddset(&mask, SIGQUIT);
         sigaddset(&mask, SIGINT);
         sigaddset(&mask, SIGUSR1);
         sigaddset(&mask, SIGCHLD);
@@ -1114,6 +1107,7 @@ int command_start(int argc, char *argv[]) {
             sigset_t mask;
             sigemptyset(&mask);
             sigaddset(&mask, SIGTERM);
+            sigaddset(&mask, SIGQUIT);
             sigaddset(&mask, SIGINT);
             sigaddset(&mask, SIGUSR1);
             sigaddset(&mask, SIGCHLD);
@@ -1157,21 +1151,26 @@ int command_start(int argc, char *argv[]) {
             // parent: service-runner process
             {
                 // setup signal handling
-                if (signal(SIGTERM, forward_signal) == SIG_ERR) {
-                    fprintf(stderr, "*** error: (parent) signal(SIGTERM, forward_signal): %s\n", strerror(errno));
+                if (signal(SIGTERM, handles_stop_signal) == SIG_ERR) {
+                    fprintf(stderr, "*** error: (parent) signal(SIGTERM, handles_stop_signal): %s\n", strerror(errno));
                 }
 
-                if (signal(SIGINT, forward_signal) == SIG_ERR) {
-                    fprintf(stderr, "*** error: (parent) signal(SIGINT, forward_signal): %s\n", strerror(errno));
+                if (signal(SIGQUIT, handles_stop_signal) == SIG_ERR) {
+                    fprintf(stderr, "*** error: (parent) signal(SIGQUIT, handles_stop_signal): %s\n", strerror(errno));
                 }
 
-                if (signal(SIGUSR1, handle_restart) == SIG_ERR) {
-                    fprintf(stderr, "*** error: (parent) signal(SIGUSR1, handle_restart): %s\n", strerror(errno));
+                if (signal(SIGINT, handles_stop_signal) == SIG_ERR) {
+                    fprintf(stderr, "*** error: (parent) signal(SIGINT, handles_stop_signal): %s\n", strerror(errno));
+                }
+
+                if (signal(SIGUSR1, handle_restart_signal) == SIG_ERR) {
+                    fprintf(stderr, "*** error: (parent) signal(SIGUSR1, handle_restart_signal): %s\n", strerror(errno));
                 }
 
                 sigset_t mask;
                 sigemptyset(&mask);
                 sigaddset(&mask, SIGTERM);
+                sigaddset(&mask, SIGQUIT);
                 sigaddset(&mask, SIGINT);
                 sigaddset(&mask, SIGUSR1);
                 if (sigprocmask(SIG_UNBLOCK, &mask, NULL) != 0) {
@@ -1375,6 +1374,7 @@ int command_start(int argc, char *argv[]) {
                         sigset_t mask;
                         sigemptyset(&mask);
                         sigaddset(&mask, SIGTERM);
+                        sigaddset(&mask, SIGQUIT);
                         sigaddset(&mask, SIGINT);
                         sigaddset(&mask, SIGUSR1);
                         sigaddset(&mask, SIGCHLD);
@@ -1412,10 +1412,13 @@ int command_start(int argc, char *argv[]) {
 
                                 switch (param) {
                                     case SIGTERM:
+                                        // We send SIGTERM for restart (no other signal),
+                                        // so only do this in the SIGTERM case.
                                         if (restart_issued) {
                                             // don't set running to false
                                             break;
                                         }
+                                    case SIGQUIT:
                                     case SIGINT:
                                     case SIGKILL:
                                         printf("service-runner: service stopped via signal %d -> don't restart\n", param);
