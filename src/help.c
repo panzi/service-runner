@@ -58,6 +58,10 @@
         "       -l, --logfile=FILE              Write service output to FILE. default: /var/log/NAME-%%Y-%%m-%%d.log\n"         \
         "                                       This implements log-rotating based on the file name pattern. See `man strftime` for a description of the pattern language.\n" \
         "           --chown-logfile             Change owner of the logfile to user/group specified by --user/--group.\n"       \
+        "           --restart=WHEN              Restart policy. Possible values for WHEN:\n"                                    \
+        "                                         NEVER ..... never restart (except when explicitely requesting restart using the restart command)\n" \
+        "                                         ALWAYS .... restart no matter if the service exited normally or with an error status.\n"            \
+        "                                         FAILURE ... (default) only restart the service if it exited with an error status or crashed.\n"     \
         "       -u, --user=USER                 Run service as USER (name or UID).\n"                                           \
         "       -g, --group=GROUP               Run service as GROUP (name or GID).\n"                                          \
         "       -N, --priority=PRIORITY         Run service and service-runner(!) under process scheduling priority PRIORITY. From -20 (maximum priority) to +19 (minimum priority).\n" \

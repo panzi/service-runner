@@ -160,18 +160,31 @@ function run_test_file () {
     local suit_name
     local test_funcs
     local test_file=$1
+    local test_func
     shift
 
     suit_name=$(basename "$test_file" .test.sh | tr _ ' ')
     echo "$suit_name"
     echo "${suit_name//?/=}"
 
+    test_funcs=($( bash -eo pipefail -c ". $(printf %q "$test_file"); declare -F" | sed 's/^declare -f //' | grep ^test_ | sed 's/^test_//' | sort || true ))
     if [[ $# -eq 0 ]]; then
-        test_funcs=$(bash -eo pipefail -c ". $(printf %q "$test_file"); declare -F" | sed 's/^declare -f //' | grep ^test_ | sed 's/^test_//' | sort || true)
-
-        run_test_suit "$test_file" $test_funcs
+        run_test_suit "$test_file" "${test_funcs[@]}"
     else
-        run_test_suit "$test_file" "$@"
+        local filtered_test_funcs=()
+        local pattern
+
+        for pattern in "$@"; do
+            for test_func in "${test_funcs[@]}"; do
+                case "$test_func" in
+                    ($pattern)
+                        filtered_test_funcs+=("$test_func")
+                        ;;
+                esac
+            done
+        done
+
+        run_test_suit "$test_file" "${filtered_test_funcs[@]}"
     fi
 
     echo

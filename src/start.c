@@ -205,6 +205,7 @@ enum {
     OPT_START_RLIMIT,
     OPT_START_UMASK,
     // TODO: --procsched and --iosched?
+    OPT_START_RESTART,
     OPT_START_CRASH_REPORT,
     OPT_START_CRASH_SLEEP,
     OPT_START_COUNT,
@@ -219,9 +220,16 @@ const struct option start_options[] = {
     [OPT_START_PRIORITY]      = { "priority",      required_argument, 0, 'N' },
     [OPT_START_RLIMIT]        = { "rlimit",        required_argument, 0, 'r' },
     [OPT_START_UMASK]         = { "umask",         required_argument, 0, 'k' },
+    [OPT_START_RESTART]       = { "restart",       required_argument, 0,  0  },
     [OPT_START_CRASH_REPORT]  = { "crash-report",  required_argument, 0,  0  },
     [OPT_START_CRASH_SLEEP]   = { "crash-sleep",   required_argument, 0,  0  },
     [OPT_START_COUNT]         = { 0, 0, 0, 0 },
+};
+
+enum Restart {
+    RESTART_NEVER   = 0,
+    RESTART_ALWAYS  = 1,
+    RESTART_FAILURE = 2,
 };
 
 pid_t service_pid = 0;
@@ -558,6 +566,8 @@ int command_start(int argc, char *argv[]) {
     const char *crash_report = NULL;
     unsigned int crash_sleep = 1;
 
+    enum Restart restart = RESTART_FAILURE;
+
     bool set_priority = false;
     bool set_umask    = false;
     int priority    = 0;
@@ -592,6 +602,20 @@ int command_start(int argc, char *argv[]) {
                 switch (longind) {
                     case OPT_START_CHOWN_LOGFILE:
                         chown_logfile = true;
+                        break;
+
+                    case OPT_START_RESTART:
+                        if (strcasecmp("ALWAYS", optarg) == 0) {
+                            restart = RESTART_ALWAYS;
+                        } else if (strcasecmp("NEVER", optarg) == 0) {
+                            restart = RESTART_NEVER;
+                        } else if (strcasecmp("FAILURE", optarg) == 0) {
+                            restart = RESTART_FAILURE;
+                        } else {
+                            fprintf(stderr, "*** error: illegal value for --restart: %s\n", optarg);
+                            status = 1;
+                            goto cleanup;
+                        }
                         break;
 
                     case OPT_START_CRASH_REPORT:
@@ -1392,12 +1416,15 @@ int command_start(int argc, char *argv[]) {
 
                             if (param == 0) {
                                 printf("service-runner: %s exited normally\n", name);
-                                if (!restart_issued) {
+                                if (!restart_issued && restart != RESTART_ALWAYS) {
                                     running = false;
                                 }
                             } else {
                                 fprintf(stderr, "service-runner: *** error: %s exited with error status %d\n", name, param);
                                 crash = true;
+                                if (!restart_issued && restart == RESTART_NEVER) {
+                                    running = false;
+                                }
                             }
                         } else if (WIFSIGNALED(service_status)) {
                             param = WTERMSIG(service_status);
@@ -1405,6 +1432,9 @@ int command_start(int argc, char *argv[]) {
                                 code_str = "DUMPED";
                                 fprintf(stderr, "service-runner: *** error: %s was killed by signal %d and dumped core\n", name, param);
                                 crash = true;
+                                if (!restart_issued && restart == RESTART_NEVER) {
+                                    running = false;
+                                }
                             } else {
                                 code_str = "KILLED";
                                 fprintf(stderr, "service-runner: *** error: %s was killed by signal %d\n", name, param);
@@ -1420,12 +1450,17 @@ int command_start(int argc, char *argv[]) {
                                     case SIGQUIT:
                                     case SIGINT:
                                     case SIGKILL:
-                                        printf("service-runner: service stopped via signal %d -> don't restart\n", param);
-                                        running = false;
+                                        if (restart != RESTART_ALWAYS) {
+                                            printf("service-runner: service stopped via signal %d -> don't restart\n", param);
+                                            running = false;
+                                        }
                                         break;
 
                                     default:
                                         crash = true;
+                                        if (!restart_issued && restart == RESTART_NEVER) {
+                                            running = false;
+                                        }
                                         break;
                                 }
                             }

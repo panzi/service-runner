@@ -55,6 +55,17 @@ COMMANDS:
                                        a description of the pattern language.
            --chown-logfile             Change owner of the logfile to user/group
                                        specified by --user/--group.
+           --restart=WHEN              Restart policy. Possible values for WHEN:
+                                         NEVER ..... never restart (except when
+                                                     explicitely requesting 
+                                                     restart using the restart 
+                                                     command)
+                                         ALWAYS .... restart no matter if the 
+                                                     service exited normally or
+                                                     with an error status.
+                                         FAILURE ... (default) only restart the
+                                                     service if it exited with 
+                                                     an error status or crashed.
        -u, --user=USER                 Run service as USER (name or UID).
        -g, --group=GROUP               Run service as GROUP (name or GID).
        -N, --priority=PRIORITY         Run service and service-runner(!) under 

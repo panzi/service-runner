@@ -23,12 +23,14 @@ runner="/usr/local/bin/service-runner"
 crash_report="./tests/services/crash_reporter.sh"
 logfile="/var/log/example-%Y-%m-%d.log"
 
+cd "$(dirname "$(realpath "$0")")"
+
 case "$1" in
     start)
         log_success_msg "$name: Starting example service" "$name"
         "$runner" start "$name" \
-            --user "$user" --group "$group" \
-            --logfile "$logfile" \
+            --user="$user" --group="$group" \
+            --logfile="$logfile" \
             --crash-report="$crash_report" \
             -- "${daemon[@]}"
         ;;
@@ -42,8 +44,8 @@ case "$1" in
         log_success_msg "$name: Restarting example service" "$name"
         "$runner" status "$name" >/dev/null 2>&1 && "$runner" stop "$name"
         "$runner" start "$name" \
-            --user "$user" --group "$group" \
-            --logfile "$logfile" \
+            --user="$user" --group="$group" \
+            --logfile="$logfile" \
             --crash-report="$crash_report" \
             -- "${daemon[@]}"
         ;;
