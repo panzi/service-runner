@@ -161,22 +161,22 @@ int command_logs(int argc, char *argv[]) {
             status = 1;
             goto cleanup;
         }
-
-        stdout_wd = inotify_add_watch(inotify_fd, runner_stdout, IN_MODIFY | IN_CLOSE_WRITE);
-        if (stdout_wd == -1 && errno != ENOENT) {
-            fprintf(stderr, "*** error: watching %s: %s\n", runner_stdout, strerror(errno));
-            status = 1;
-            goto cleanup;
-        }
     }
 
     bool modified = true;
-    bool closed   = false;
+    bool newfile  = true;
     bool pidgone  = false;
 
     for (;;) {
-        if (modified) {
-            if (logfile_fd == -1) {
+        if (modified || newfile) {
+            if (!modified && logfile_fd == -1) {
+                close(logfile_fd);
+                logfile_fd = -1;
+                modified = true;
+                newfile = false;
+            }
+
+            if (modified && logfile_fd == -1) {
                 logfile_fd = open(runner_stdout, O_CLOEXEC | O_RDONLY);
 
                 if (logfile_fd == -1 && (!follow || errno != ENOENT)) {
@@ -190,37 +190,58 @@ int command_logs(int argc, char *argv[]) {
                     status = 1;
                     goto cleanup;
                 }
-            }
 
-            if (logfile_fd != -1) {
-                char buf[BUFSIZ];
-
-                for (;;) {
-                    ssize_t count = read(logfile_fd, buf, sizeof(buf));
-
-                    if (count < 0) {
-                        fprintf(stderr, "*** error: reading logs: %s\n", strerror(errno));
+                if (follow) {
+                    if (stdout_wd != -1 && inotify_rm_watch(inotify_fd, stdout_wd) != 0) {
+                        fprintf(stderr, "*** error: watching %s: %s\n", runner_stdout, strerror(errno));
                         status = 1;
                         goto cleanup;
                     }
 
-                    if (count == 0) {
-                        break;
+                    stdout_wd = inotify_add_watch(inotify_fd, runner_stdout, IN_MODIFY | IN_CLOSE_WRITE);
+                    if (stdout_wd == -1 && errno != ENOENT) {
+                        fprintf(stderr, "*** error: watching %s: %s\n", runner_stdout, strerror(errno));
+                        status = 1;
+                        goto cleanup;
                     }
-
-                    fwrite(buf, count, 1, stdout);
-                }
-
-                fflush(stdout);
-
-                if (closed) {
-                    close(logfile_fd);
-                    logfile_fd = -1;
-                    closed = false;
                 }
             }
 
-            modified = false;
+            if (logfile_fd != -1) {
+                if (modified) {
+                    char buf[BUFSIZ];
+
+                    for (;;) {
+                        ssize_t count = read(logfile_fd, buf, sizeof(buf));
+
+                        if (count < 0) {
+                            fprintf(stderr, "*** error: reading logs: %s\n", strerror(errno));
+                            status = 1;
+                            goto cleanup;
+                        }
+
+                        if (count == 0) {
+                            break;
+                        }
+
+                        fwrite(buf, count, 1, stdout);
+                    }
+
+                    fflush(stdout);
+                }
+
+                if (newfile) {
+                    close(logfile_fd);
+                    logfile_fd = -1;
+                    if (follow) {
+                        newfile  = false;
+                        modified = true;
+                        continue; // new data might be written to new file
+                    }
+                } else {
+                    modified = false;
+                }
+            }
         }
 
         if (!follow) {
@@ -258,7 +279,6 @@ int command_logs(int argc, char *argv[]) {
                 const char *ptr = buf;
                 if (ptr < endptr) {
                     bool procdir_attrib = false;
-                    bool procdir_create = false;
                     bool stdout_close   = false;
 
                     for (;;) {
@@ -277,8 +297,9 @@ int command_logs(int argc, char *argv[]) {
                                 procdir_attrib = true;
                             }
 
-                            if (event->mask & IN_CREATE) {
-                                procdir_create = true;
+                            if (event->mask & IN_CREATE && strcmp(event->name, "1") == 0) {
+                                modified = true;
+                                newfile  = true;
                             }
                         }
 
@@ -287,8 +308,6 @@ int command_logs(int argc, char *argv[]) {
                             break;
                         }
                     }
-
-                    bool rewatch = false;
 
                     if (procdir_attrib) {
                         struct stat meta;
@@ -299,33 +318,14 @@ int command_logs(int argc, char *argv[]) {
                         }
                     }
 
-                    if (procdir_create && stdout_wd == -1) {
-                        rewatch = true;
-                    }
-
-                    if (stdout_close && !closed) {
+                    if (stdout_close && !newfile) {
                         struct stat meta;
                         if (stat(runner_stdout, &meta) != 0) {
                             if (errno == ENOENT) {
-                                closed = rewatch = true;
+                                newfile = true;
                             }
                         } else if (meta.st_dev != logfile_meta.st_dev || meta.st_ino != logfile_meta.st_ino) {
-                            closed = rewatch = true;
-                        }
-                    }
-
-                    if (rewatch) {
-                        if (stdout_wd != -1 && inotify_rm_watch(inotify_fd, stdout_wd) != 0) {
-                            fprintf(stderr, "*** error: watching %s: %s\n", runner_stdout, strerror(errno));
-                            status = 1;
-                            goto cleanup;
-                        }
-
-                        stdout_wd = inotify_add_watch(inotify_fd, runner_stdout, IN_MODIFY | IN_CLOSE_WRITE);
-                        if (stdout_wd == -1 && errno != ENOENT) {
-                            fprintf(stderr, "*** error: watching %s: %s\n", runner_stdout, strerror(errno));
-                            status = 1;
-                            goto cleanup;
+                            newfile = true;
                         }
                     }
                 }
