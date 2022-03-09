@@ -22,7 +22,7 @@ enum {
     OPT_STOP_COUNT,
 };
 
-const struct option stop_options[] = {
+static const struct option stop_options[] = {
     [OPT_STOP_PIDFILE]          = { "pidfile", required_argument, 0, 'p' },
     [OPT_STOP_SHUTDOWN_TIMEOUT] = { "shutdown-timeout", required_argument, 0, 0 },
     [OPT_STOP_COUNT]            = { 0, 0, 0, 0 },

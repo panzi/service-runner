@@ -107,6 +107,16 @@
         "   OPTIONS:\n"                                                 \
         HELP_OPT_PIDFILE
 
+#define HELP_CMD_LOGS_HDR                                                                \
+        "   %s logs <name> [options]\n"
+#define HELP_CMD_LOGS_DESCR                                                              \
+        "\n"                                                                             \
+        "       Print logs of service <name>.\n"                                         \
+        "\n"                                                                             \
+        "   OPTIONS:\n"                                                                  \
+        HELP_OPT_PIDFILE \
+        "       -f, --follow                    Output new logs as they are written.\n"
+
 #define HELP_CMD_HELP_HDR           \
         "   %s help [command]\n"
 #define HELP_CMD_HELP_DESCR         \
@@ -446,6 +456,7 @@ void short_usage(int argc, char *argv[]) {
     printf("       %s stop    <name> [options]\n", progname);
     printf("       %s restart <name> [options]\n", progname);
     printf("       %s status  <name> [options]\n", progname);
+    printf("       %s logs    <name> [options]\n", progname);
     printf("       %s help [command]\n", progname);
     printf("       %s version\n", progname);
 }
@@ -479,6 +490,9 @@ void usage(int argc, char *argv[]) {
 
     printf(HELP_CMD_STATUS_HDR, progname);
     print_wrapped_text(stdout, HELP_CMD_STATUS_DESCR "\n", wsize.ws_col);
+
+    printf(HELP_CMD_LOGS_HDR, progname);
+    print_wrapped_text(stdout, HELP_CMD_LOGS_DESCR "\n", wsize.ws_col);
 
     printf(HELP_CMD_HELP_HDR, progname);
     print_wrapped_text(stdout, HELP_CMD_HELP_DESCR "\n", wsize.ws_col);
@@ -535,6 +549,10 @@ int command_help(int argc, char *argv[]) {
     } else if (strcmp(command, "status") == 0) {
         printf("\n" HELP_CMD_STATUS_HDR, progname);
         print_wrapped_text(stdout, HELP_CMD_STATUS_DESCR, wsize.ws_col);
+        return 0;
+    } else if (strcmp(command, "logs") == 0) {
+        printf("\n" HELP_CMD_LOGS_HDR, progname);
+        print_wrapped_text(stdout, HELP_CMD_LOGS_DESCR, wsize.ws_col);
         return 0;
     } else if (strcmp(command, "help") == 0) {
         printf("\n" HELP_CMD_HELP_HDR, progname);

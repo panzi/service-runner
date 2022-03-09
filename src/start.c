@@ -211,7 +211,7 @@ enum {
     OPT_START_COUNT,
 };
 
-const struct option start_options[] = {
+static const struct option start_options[] = {
     [OPT_START_PIDFILE]       = { "pidfile",       required_argument, 0, 'p' },
     [OPT_START_LOGFILE]       = { "logfile",       required_argument, 0, 'l' },
     [OPT_START_CHOWN_LOGFILE] = { "chown-logfile", no_argument,       0,  0  },
@@ -232,11 +232,11 @@ enum Restart {
     RESTART_FAILURE = 2,
 };
 
-pid_t service_pid = 0;
-int service_pidfd = -1;
-volatile bool running = false;
-volatile bool restart_issued = false;
-volatile bool got_sigchld = false;
+static pid_t service_pid = 0;
+static int service_pidfd = -1;
+static volatile bool running = false;
+static volatile bool restart_issued = false;
+static volatile bool got_sigchld = false;
 
 static bool is_valid_name(const char *name) {
     if (!*name) {

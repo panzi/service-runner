@@ -17,7 +17,7 @@ enum {
     OPT_STATUS_COUNT,
 };
 
-const struct option status_options[] = {
+static const struct option status_options[] = {
     [OPT_STATUS_PIDFILE] = { "pidfile", required_argument, 0, 'p' },
     [OPT_STATUS_COUNT]   = { 0, 0, 0, 0 },
 };
@@ -54,7 +54,7 @@ int command_status(int argc, char *argv[]) {
     if (count != 1) {
         fprintf(stderr, "*** error: illegal number of arguments\n");
         short_usage(argc, argv);
-        return 1;
+        return 150;
     }
 
     const char *name = argv[optind ++];
@@ -80,7 +80,7 @@ int command_status(int argc, char *argv[]) {
         size_t pidfile_runner_size = strlen(pidfile) + strlen(".runner") + 1;
         pidfile_runner = malloc(pidfile_runner_size);
         if (pidfile_runner == NULL) {
-            fprintf(stderr, "*** error: malloc: %s\n", strerror(errno));
+            fprintf(stderr, "*** error: malloc(%zu): %s\n", pidfile_runner_size, strerror(errno));
             status = 150;
             goto cleanup;
         }

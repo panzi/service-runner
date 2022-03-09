@@ -30,6 +30,7 @@ Usage: service-runner start   <name> [options] [--] <command> [argument...]
        service-runner stop    <name> [options]
        service-runner restart <name> [options]
        service-runner status  <name> [options]
+       service-runner logs    <name> [options]
        service-runner help [command]
        service-runner version
 
@@ -128,6 +129,15 @@ COMMANDS:
    OPTIONS:
        -p, --pidfile=FILE              Use FILE as the pidfile. default: 
                                        /var/run/NAME.pid
+
+   service-runner logs <name> [options]
+
+       Print logs of service <name>.
+
+   OPTIONS:
+       -p, --pidfile=FILE              Use FILE as the pidfile. default: 
+                                       /var/run/NAME.pid
+       -f, --follow                    Output new logs as they are written.
 
    service-runner help [command]
 

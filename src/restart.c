@@ -21,7 +21,7 @@ enum {
     OPT_RESTART_COUNT,
 };
 
-const struct option restart_options[] = {
+static const struct option restart_options[] = {
     [OPT_RESTART_PIDFILE] = { "pidfile", required_argument, 0, 'p' },
     [OPT_RESTART_COUNT]   = { 0, 0, 0, 0 },
 };
