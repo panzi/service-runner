@@ -8,10 +8,11 @@
 #include <limits.h>
 #include <assert.h>
 #include <string.h>
+#include <inttypes.h>
 
 #include "service-runner.h"
 
-size_t dirend(const char *path) {
+static size_t dirend(const char *path) {
     size_t index = strlen(path);
     if (index == 0) {
         return 0;
@@ -202,4 +203,137 @@ int read_pidfile(const char *pidfile, pid_t *pidptr) {
     }
 
     return 0;
+}
+
+char *join_path(const char *dirpath, const char *relpath) {
+    if (!*dirpath || !*relpath) {
+        errno = EINVAL;
+        return NULL;
+    }
+
+    size_t dirlen = strlen(dirpath);
+    size_t rellen = strlen(relpath);
+    size_t newsize = dirlen;
+    
+    if (SIZE_MAX - rellen < newsize) {
+        errno = ENOMEM;
+        return NULL;
+    }
+    newsize += rellen;
+
+    if (SIZE_MAX - 1 < newsize) {
+        errno = ENOMEM;
+        return NULL;
+    }
+    ++ newsize;
+
+    char *buf;
+    if (dirpath[dirlen - 1] == '/' || relpath[0] == '/') {
+        buf = malloc(newsize);
+        if (buf == NULL) {
+            return NULL;
+        }
+        memcpy(buf, dirpath, dirlen);
+        memcpy(buf + dirlen, relpath, rellen);
+    } else if (SIZE_MAX - 1 < newsize) {
+        errno = ENOMEM;
+        return NULL;
+    } else {
+        ++ newsize;
+        buf = malloc(newsize);
+        if (buf == NULL) {
+            return NULL;
+        }
+        memcpy(buf, dirpath, dirlen);
+        buf[dirlen] = '/';
+        memcpy(buf + dirlen + 1, relpath, rellen);
+    }
+
+    buf[newsize - 1] = 0;
+    return buf;
+}
+
+char *normpath_no_escape(const char *path) {
+    if (!*path) {
+        return strdup(".");
+    }
+
+    const size_t len = strlen(path) + 1;
+    char *newpath = malloc(len);
+    if (newpath == NULL) {
+        return NULL;
+    }
+
+    const char *src = path;
+    char *dest = newpath;
+
+    while (*src) {
+        if (src[0] == '.') {
+            if (src[1] == '.') {
+                if (src[2] == '/' || src[2] == 0) {
+                    src += 2;
+                    while (*src == '/') ++ src;
+                    if (dest > newpath + 1) {
+                        -- dest;
+                        assert(*dest == '/');
+                        while (dest > newpath && dest[-1] != '/') {
+                            -- dest;
+                        }
+                        if (dest > newpath + 1 && dest[-1] == '/') {
+                            -- dest;
+                            if (src[-1] == '/') {
+                                -- src;
+                            }
+                        }
+                    }
+                    continue;
+                }
+            } else if (src[1] == '/' || src[1] == 0) {
+                src += 1;
+                while (*src == '/') ++ src;
+                if (dest > newpath + 1) {
+                    -- dest;
+                    assert(*dest == '/');
+                    if (src[-1] == '/') {
+                        -- src;
+                    }
+                }
+                continue;
+            }
+        } else if (src[0] == '/') {
+            ++ src;
+            while (*src == '/') ++ src;
+            if (dest > newpath && *src == 0) {
+                continue;
+            }
+            *dest = '/';
+            ++ dest;
+            continue;
+        }
+        while (*src != '/' && *src != 0) {
+            *dest = *src;
+            ++ dest;
+            ++ src;
+        }
+    }
+
+    if (dest == newpath) {
+        // This is safe because the case where path == "" and
+        // thus the newly allocated space could only hold one byte
+        // is handeled above.
+        *dest = '.';
+        ++ dest;
+    }
+    *dest = 0;
+    ++ dest;
+
+    const size_t newlen = dest - newpath;
+    if (len != newlen) {
+        char *shrunk = realloc(newpath, newlen);
+        if (shrunk != NULL) {
+            newpath = shrunk;
+        }
+    }
+
+    return newpath;
 }

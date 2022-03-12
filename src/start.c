@@ -204,6 +204,8 @@ enum {
     OPT_START_PRIORITY,
     OPT_START_RLIMIT,
     OPT_START_UMASK,
+    OPT_START_CHROOT,
+    OPT_START_CHDIR,
     // TODO: --procsched and --iosched?
     OPT_START_RESTART,
     OPT_START_CRASH_REPORT,
@@ -220,6 +222,8 @@ static const struct option start_options[] = {
     [OPT_START_PRIORITY]      = { "priority",      required_argument, 0, 'N' },
     [OPT_START_RLIMIT]        = { "rlimit",        required_argument, 0, 'r' },
     [OPT_START_UMASK]         = { "umask",         required_argument, 0, 'k' },
+    [OPT_START_CHROOT]        = { "chroot",        required_argument, 0,  0  },
+    [OPT_START_CHDIR]         = { "chdir",         required_argument, 0, 'C' },
     [OPT_START_RESTART]       = { "restart",       required_argument, 0,  0  },
     [OPT_START_CRASH_REPORT]  = { "crash-report",  required_argument, 0,  0  },
     [OPT_START_CRASH_SLEEP]   = { "crash-sleep",   required_argument, 0,  0  },
@@ -266,6 +270,39 @@ static bool can_execute(const char *filename, uid_t uid, gid_t gid) {
         return false;
     }
 
+    if (S_ISDIR(meta.st_mode)) {
+        errno = EISDIR;
+        return false;
+    }
+
+    if (meta.st_mode & S_IXOTH) {
+        return true;
+    }
+
+    if (meta.st_gid == gid && meta.st_mode & S_IXGRP) {
+        return true;
+    }
+
+    if (meta.st_uid == uid && meta.st_mode & S_IXUSR) {
+        return true;
+    }
+
+    errno = EACCES;
+    return false;
+}
+
+static bool can_list(const char *dirname, uid_t uid, gid_t gid) {
+    struct stat meta;
+
+    if (stat(dirname, &meta) != 0) {
+        return false;
+    }
+
+    if (!S_ISDIR(meta.st_mode)) {
+        errno = ENOTDIR;
+        return false;
+    }
+
     if (meta.st_mode & S_IXOTH) {
         return true;
     }
@@ -285,13 +322,13 @@ static bool can_execute(const char *filename, uid_t uid, gid_t gid) {
 static bool can_read_write(const char *filename, uid_t uid, gid_t gid) {
     struct stat meta;
 
-    if (uid == 0 || gid == 0) {
-        // root
-        return true;
-    }
-
     if (stat(filename, &meta) != 0) {
         if (errno == ENOENT) {
+            if (uid == 0 || gid == 0) {
+                // root
+                return true;
+            }
+
             char *namedup = strdup(filename);
             if (namedup == NULL) {
                 fprintf(stderr, "*** error: strdup(\"%s\"): %s\n", filename, strerror(errno));
@@ -322,6 +359,16 @@ static bool can_read_write(const char *filename, uid_t uid, gid_t gid) {
         } else {
             return false;
         }
+    }
+
+    if (S_ISDIR(meta.st_mode)) {
+        errno = EISDIR;
+        return false;
+    }
+
+    if (uid == 0 || gid == 0) {
+        // root
+        return true;
     }
 
     bool can_read  = false;
@@ -561,6 +608,8 @@ int command_start(int argc, char *argv[]) {
     const char *logfile = NULL;
     const char *user    = NULL;
     const char *group   = NULL;
+    const char *chdir_path = NULL;
+    char *chroot_path = NULL;
 
     bool chown_logfile = false;
     const char *crash_report = NULL;
@@ -584,6 +633,7 @@ int command_start(int argc, char *argv[]) {
     bool free_pidfile = false;
     bool free_logfile = false;
     bool free_command = false;
+    bool free_chdir_path  = false;
     bool cleanup_pidfiles = false;
     bool rlimit_fsize = false;
 
@@ -591,7 +641,7 @@ int command_start(int argc, char *argv[]) {
     char logfile_path_buf[PATH_MAX];
 
     for (;;) {
-        int opt = getopt_long(argc - 1, argv + 1, "p:l:u:g:N:k:r:", start_options, &longind);
+        int opt = getopt_long(argc - 1, argv + 1, "p:l:u:g:N:k:r:C", start_options, &longind);
 
         if (opt == -1) {
             break;
@@ -616,6 +666,34 @@ int command_start(int argc, char *argv[]) {
                             status = 1;
                             goto cleanup;
                         }
+                        break;
+
+                    case OPT_START_CHROOT:
+                    {
+                        if (!*optarg) {
+                            fprintf(stderr, "*** error: --chroot cannot be empty string\n");
+                            status = 1;
+                            goto cleanup;
+                        }
+
+                        free(chroot_path);
+                        chroot_path = abspath(optarg);
+                        if (chroot_path == NULL) {
+                            fprintf(stderr, "*** error: getting absolute path of --chroot=%s: %s\n", optarg, strerror(errno));
+                            status = 1;
+                            goto cleanup;
+                        }
+                        break;
+                    }
+
+                    case OPT_START_CHDIR:
+                        if (!*optarg) {
+                            fprintf(stderr, "*** error: --chdir cannot be empty string\n");
+                            status = 1;
+                            goto cleanup;
+                        }
+
+                        chdir_path = optarg;
                         break;
 
                     case OPT_START_CRASH_REPORT:
@@ -768,14 +846,62 @@ int command_start(int argc, char *argv[]) {
     uid_t xuid = user  == NULL ? selfuid : uid;
     gid_t xgid = group == NULL ? selfgid : gid;
 
-    if (!can_execute(command, xuid, xgid)) {
-        fprintf(stderr, "*** error: file not found or not executable: %s\n", command);
-        status = 1;
-        goto cleanup;
+    // TODO: chdir
+    if (chroot_path != NULL) {
+        if (!can_list(chroot_path, xuid, xgid)) {
+            fprintf(stderr, "*** error: illegal chroot directory: %s: %s\n", chroot_path, strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
+
+        char *norm_command = normpath_no_escape(command);
+        if (norm_command == NULL) {
+            fprintf(stderr, "*** error: normpath_no_escape(\"%s\"): %s\n", command, strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
+
+        char *command_path = join_path(chroot_path, norm_command);
+
+        if (command_path == NULL) {
+            fprintf(stderr, "*** error: join_path(\"%s\", \"%s\"): %s\n", chroot_path, command, strerror(errno));
+            free(norm_command);
+            status = 1;
+            goto cleanup;
+        }
+        free(norm_command);
+
+        bool binary_ok = can_execute(command_path, xuid, xgid);
+
+        if (!binary_ok) {
+            fprintf(stderr, "*** error: illegal executable: %s: %s\n", command_path, strerror(errno));
+            free(command_path);
+            status = 1;
+            goto cleanup;
+        }
+        free(command_path);
+    } else {
+        if (command[0] != '/') {
+            char *buf = abspath(command);
+            if (buf == NULL) {
+                fprintf(stderr, "*** error: abspath(\"%s\"): %s\n", command, strerror(errno));
+                status = 1;
+                goto cleanup;
+            }
+
+            command = buf;
+            free_command = true;
+        }
+
+        if (!can_execute(command, xuid, xgid)) {
+            fprintf(stderr, "*** error: illegal executable: %s: %s\n", command, strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
     }
 
     if (crash_report != NULL && !can_execute(crash_report, selfuid, selfgid)) {
-        fprintf(stderr, "*** error: file not found or not executable: %s: %s\n", crash_report, strerror(errno));
+        fprintf(stderr, "*** error: illegal executable: %s: %s\n", crash_report, strerror(errno));
         status = 1;
         goto cleanup;
     }
@@ -792,18 +918,6 @@ int command_start(int argc, char *argv[]) {
             status = 1;
             goto cleanup;
         }
-    }
-
-    if (command[0] != '/') {
-        char *buf = abspath(command);
-        if (buf == NULL) {
-            fprintf(stderr, "*** error: abspath(\"%s\"): %s\n", command, strerror(errno));
-            status = 1;
-            goto cleanup;
-        }
-
-        command = buf;
-        free_command = true;
     }
 
     switch (get_pidfile_abspath((char**)&pidfile, name)) {
@@ -1124,6 +1238,12 @@ int command_start(int argc, char *argv[]) {
                     // though, ignore it anyway?
                 }
                 pipefd[PIPE_WRITE] = -1;
+            }
+
+            if (chroot_path != NULL && chroot(chroot_path) != 0) {
+                fprintf(stderr, "*** error: (child) chroot(\"%s\"): %s\n", chroot_path, strerror(errno));
+                status = 1;
+                goto cleanup;
             }
 
             // signal masks are preserved across exec*()
@@ -1572,8 +1692,13 @@ cleanup:
         }
     }
 
+    free(chroot_path);
     free(pidfile_runner);
     free(rlimits);
+
+    if (free_chdir_path) {
+        free((char*)chdir_path);
+    }
 
     if (free_pidfile) {
         free((char*)pidfile);
