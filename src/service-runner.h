@@ -62,7 +62,9 @@ enum AbsPathResult get_logfile_abspath(char **logfile_ptr, const char *name);
 int write_pidfile(const char *pidfile, pid_t pid);
 int read_pidfile(const char *pidfile, pid_t *pidptr);
 
-char *join_path(const char *dirpath, const char *relpath);
+char *join_pathv(const char *basepath, ...);
+#define join_path(...) join_pathv(__VA_ARGS__, NULL)
+
 char *normpath_no_escape(const char *path);
 
 #ifdef __cplusplus

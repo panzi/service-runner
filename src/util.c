@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <errno.h>
 #include <unistd.h>
 #include <limits.h>
@@ -205,51 +206,82 @@ int read_pidfile(const char *pidfile, pid_t *pidptr) {
     return 0;
 }
 
-char *join_path(const char *dirpath, const char *relpath) {
-    if (!*dirpath || !*relpath) {
+char *join_pathv(const char *basepath, ...) {
+    if (basepath == NULL || !*basepath) {
         errno = EINVAL;
         return NULL;
     }
 
-    size_t dirlen = strlen(dirpath);
-    size_t rellen = strlen(relpath);
-    size_t newsize = dirlen;
-    
-    if (SIZE_MAX - rellen < newsize) {
-        errno = ENOMEM;
-        return NULL;
-    }
-    newsize += rellen;
+    const size_t base_size = strlen(basepath);
+    size_t size = base_size;
 
-    if (SIZE_MAX - 1 < newsize) {
-        errno = ENOMEM;
-        return NULL;
-    }
-    ++ newsize;
+    const char *prev = basepath;
+    size_t prev_size = size;
 
-    char *buf;
-    if (dirpath[dirlen - 1] == '/' || relpath[0] == '/') {
-        buf = malloc(newsize);
-        if (buf == NULL) {
+    ++ size; // for nil
+
+    va_list ap;
+    va_start(ap, basepath);
+
+    for (;;) {
+        const char *relpath = va_arg(ap, const char *);
+        if (relpath == NULL) {
+            break;
+        }
+
+        if (!*relpath) {
+            va_end(ap);
+            errno = EINVAL;
             return NULL;
         }
-        memcpy(buf, dirpath, dirlen);
-        memcpy(buf + dirlen, relpath, rellen);
-    } else if (SIZE_MAX - 1 < newsize) {
-        errno = ENOMEM;
-        return NULL;
-    } else {
-        ++ newsize;
-        buf = malloc(newsize);
-        if (buf == NULL) {
+
+        const size_t relsize = strlen(relpath);
+        size_t plus_size = relsize;
+        if (prev[prev_size - 1] != '/' && relpath[0] != '/') {
+            ++ plus_size;
+        }
+
+        if (size > SIZE_MAX - plus_size) {
+            va_end(ap);
+            errno = ENOMEM;
             return NULL;
         }
-        memcpy(buf, dirpath, dirlen);
-        buf[dirlen] = '/';
-        memcpy(buf + dirlen + 1, relpath, rellen);
+        size += plus_size;
+
+        prev = relpath;
+        prev_size = relsize;
     }
 
-    buf[newsize - 1] = 0;
+    va_end(ap);
+
+    char *buf = malloc(size);
+    if (buf == NULL) {
+        return NULL;
+    }
+
+    memcpy(buf, basepath, base_size);
+
+    size_t offset = base_size;
+
+    va_start(ap, basepath);
+
+    for (;;) {
+        const char *relpath = va_arg(ap, const char *);
+        if (relpath == NULL) {
+            break;
+        }
+
+        const size_t relsize = strlen(relpath);
+        if (buf[offset - 1] != '/' && relpath[0] != '/') {
+            buf[offset] = '/';
+            ++ offset;
+        }
+        memcpy(buf + offset, relpath, relsize);
+    }
+    buf[offset] = 0;
+
+    va_end(ap);
+
     return buf;
 }
 

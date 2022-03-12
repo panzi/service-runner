@@ -846,50 +846,137 @@ int command_start(int argc, char *argv[]) {
     uid_t xuid = user  == NULL ? selfuid : uid;
     gid_t xgid = group == NULL ? selfgid : gid;
 
-    // TODO: chdir
+    // setup chroot, chdir, command path and check if it all can be accessed
     if (chroot_path != NULL) {
+        // chroot case
         if (!can_list(chroot_path, xuid, xgid)) {
-            fprintf(stderr, "*** error: illegal chroot directory: %s: %s\n", chroot_path, strerror(errno));
+            fprintf(stderr, "*** error: illegal chroot path: %s: %s\n", chroot_path, strerror(errno));
             status = 1;
             goto cleanup;
         }
 
-        char *norm_command = normpath_no_escape(command);
-        if (norm_command == NULL) {
-            fprintf(stderr, "*** error: normpath_no_escape(\"%s\"): %s\n", command, strerror(errno));
-            status = 1;
-            goto cleanup;
+        if (chdir_path != NULL) {
+            if (chdir_path[0] != '/') {
+                char *abs_chdir_path = join_path("/", chdir_path);
+                if (abs_chdir_path == NULL) {
+                    fprintf(stderr, "*** error: join_path(\"/\", \"%s\"): %s\n", chdir_path, strerror(errno));
+                    status = 1;
+                    goto cleanup;
+                }
+                chdir_path = abs_chdir_path;
+                free_chdir_path = true;
+            }
+
+            char *norm_chdir_path = normpath_no_escape(chdir_path);
+            if (norm_chdir_path == NULL) {
+                fprintf(stderr, "*** error: normpath_no_escape(\"%s\"): %s\n", chdir_path, strerror(errno));
+                status = 1;
+                goto cleanup;
+            }
+
+            if (free_chdir_path) {
+                free((char*)chdir_path);
+            }
+            chdir_path = norm_chdir_path;
+            free_chdir_path = true;
+
+            char *chroot_chdir_path = join_path(chroot_path, chdir_path);
+            if (chroot_chdir_path == NULL) {
+                fprintf(stderr, "*** error: join_path(\"%s\", \"%s\"): %s\n", chroot_path, chdir_path, strerror(errno));
+                status = 1;
+                goto cleanup;
+            }
+
+            if (!can_list(chroot_chdir_path, xuid, xgid)) {
+                fprintf(stderr, "*** error: illegal chdir path: %s: %s\n", chroot_chdir_path, strerror(errno));
+                free(chroot_chdir_path);
+                status = 1;
+                goto cleanup;
+            }
+            free(chroot_chdir_path);
         }
 
-        char *command_path = join_path(chroot_path, norm_command);
-
-        if (command_path == NULL) {
-            fprintf(stderr, "*** error: join_path(\"%s\", \"%s\"): %s\n", chroot_path, command, strerror(errno));
-            free(norm_command);
-            status = 1;
-            goto cleanup;
-        }
-        free(norm_command);
-
-        bool binary_ok = can_execute(command_path, xuid, xgid);
-
-        if (!binary_ok) {
-            fprintf(stderr, "*** error: illegal executable: %s: %s\n", command_path, strerror(errno));
-            free(command_path);
-            status = 1;
-            goto cleanup;
-        }
-        free(command_path);
-    } else {
         if (command[0] != '/') {
-            char *buf = abspath(command);
-            if (buf == NULL) {
+            char *chroot_abs_command = join_path(chdir_path == NULL ? "/" : chdir_path, command);
+            if (chroot_abs_command == NULL) {
+                fprintf(stderr, "*** error: join_path(\"%s\", \"%s\"): %s\n", chdir_path == NULL ? "/" : chdir_path, command, strerror(errno));
+                status = 1;
+                goto cleanup;
+            }
+
+            char *norm_command = normpath_no_escape(chroot_abs_command);
+            if (norm_command == NULL) {
+                fprintf(stderr, "*** error: normpath_no_escape(\"%s\"): %s\n", chroot_abs_command, strerror(errno));
+                free(chroot_abs_command);
+                status = 1;
+                goto cleanup;
+            }
+            free(chroot_abs_command);
+
+            command = norm_command;
+            free_command = true;
+        } else {
+            char *norm_command = normpath_no_escape(command);
+            if (norm_command == NULL) {
+                fprintf(stderr, "*** error: normpath_no_escape(\"%s\"): %s\n", command, strerror(errno));
+                status = 1;
+                goto cleanup;
+            }
+
+            command = norm_command;
+            free_command = true;
+        }
+
+        char *abs_command = join_path(chroot_path, command);
+        if (abs_command == NULL) {
+            fprintf(stderr, "*** error: join_path(\"%s\", \"%s\"): %s\n", chroot_path, command, strerror(errno));
+            status = 1;
+            goto cleanup;
+        }
+
+        if (!can_execute(abs_command, xuid, xgid)) {
+            fprintf(stderr, "*** error: illegal executable: %s: %s\n", abs_command, strerror(errno));
+            free(abs_command);
+            status = 1;
+            goto cleanup;
+        }
+        free(abs_command);
+    } else {
+        // non-chroot case
+        if (chdir_path != NULL) {
+            char *abs_chdir_path = abspath(chdir_path);
+            if (abs_chdir_path == NULL) {
+                fprintf(stderr, "*** error: abspath(\"%s\"): %s\n", chdir_path, strerror(errno));
+                status = 1;
+                goto cleanup;
+            }
+            chdir_path = abs_chdir_path;
+            free_chdir_path = true;
+
+            if (!can_list(chdir_path, xuid, xgid)) {
+                fprintf(stderr, "*** error: illegal chdir path: %s: %s\n", chdir_path, strerror(errno));
+                status = 1;
+                goto cleanup;
+            }
+
+            char *abs_command = join_path(abs_chdir_path, command);
+            if (abs_command == NULL) {
+                fprintf(stderr, "*** error: join_path(\"%s\", \"%s\"): %s\n", abs_chdir_path, abs_command, strerror(errno));
+                status = 1;
+                goto cleanup;
+            }
+
+            command = abs_command;
+            free_command = true;
+        } else if (command[0] != '/') {
+            char *abs_command = abspath(command);
+            if (abs_command == NULL) {
                 fprintf(stderr, "*** error: abspath(\"%s\"): %s\n", command, strerror(errno));
                 status = 1;
                 goto cleanup;
             }
 
-            command = buf;
+            command = abs_command;
             free_command = true;
         }
 
@@ -1242,6 +1329,14 @@ int command_start(int argc, char *argv[]) {
 
             if (chroot_path != NULL && chroot(chroot_path) != 0) {
                 fprintf(stderr, "*** error: (child) chroot(\"%s\"): %s\n", chroot_path, strerror(errno));
+                signal_premature_exit(runner_pid);
+                status = 1;
+                goto cleanup;
+            }
+
+            if (chdir_path != NULL && chdir(chdir_path) != 0) {
+                fprintf(stderr, "*** error: (child) chdir(\"%s\"): %s\n", chdir_path, strerror(errno));
+                signal_premature_exit(runner_pid);
                 status = 1;
                 goto cleanup;
             }

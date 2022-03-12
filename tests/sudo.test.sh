@@ -68,3 +68,57 @@ function test_03_status_as_user_of_root_service () {
     assert_status 3 sudo -u "$sudo_user" -g "$sudo_group" "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
     assert_fail pgrep service-runner
 }
+
+function test_04_chroot () {
+    root_dir="/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.root"
+    bash_path=$(which bash)
+    if [[ -e "$root_dir" ]]; then
+        rm -r -- "$root_dir"
+    fi
+
+    mkdir -p "$root_dir/etc"
+    mkdir -p "$root_dir/bin"
+    mkdir -p "$root_dir/usr/bin"
+
+    cp -- "$bash_path" "$root_dir/bin"
+    ln -s /bin/bash /usr/bin/bash
+    ln -s /bin/bash /usr/bin/sh
+    ln -s /bin/sh   /usr/bin/sh
+
+    ldd "$bash_path"|grep '=>'|sed 's/.*=> *\([^ ]\+\) .*/\1/'|while read -r so; do
+        so_dir=$(dirname "$so")
+        mkdir -p "$root_dir/$so_dir"
+        cp -- "$so" "$root_dir/$so_dir"
+    done
+
+    cat >"$root_dir/etc/passwd" <<EOF
+root::0:0:root:/:/bin/bash
+$sudo_user::$(id -u "$sudo_user"):$(id -g "$sudo_group"):/home/$sudo_user:/bin/bash
+EOF
+
+    cat >"$root_dir/etc/group" <<EOF
+root::0
+$sudo_group::$(id -g "$sudo_group")
+EOF
+
+    cp -- ./tests/services/long_running_service.sh "$root_dir/bin"
+
+    chown -R root:root "$root_dir"
+
+    mkdir -p -- "/home/$sudo_user"
+    chown -R "$sudo_user:$sudo_group" "/home/$sudo_user"
+
+    mount -t proc none "$root_dir/proc/"
+    mount --rbind /sys "$root_dir/sys/"
+    mount --rbind /dev "$root_dir/dev/"
+
+    assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" \
+        --chroot="$root_dir" --chdir="/home/$sudo_user" \
+        --user="$sudo_user" --group="$sudo_group" \
+        /bin/long_running_service.sh 0.25
+    sleep 0.5
+    assert_status 0 "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
+    assert_ok   "$SERVICE_RUNNER" stop   test --pidfile="$PIDFILE"
+    assert_fail "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
+    assert_fail pgrep service-runner
+}
