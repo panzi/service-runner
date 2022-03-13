@@ -13,10 +13,12 @@ includes:
 * Start services
 * Stop services
 * Show service status
-* Restarts the service on crash
+* Restarts the service on crash or manually
 * Can report crashes
 * Start service as a different user
+* Start service in chroot environment and with certain rlimits and priority
 * Logfile handling including log-rotate and setting owner of logfile
+* Live display of logs
 
 It uses `pidfd_open()` and `pidfd_send_signal()`, but has fallback code for when
 that is not supported by the kernel. That makes the code a bit messy and redundant,
