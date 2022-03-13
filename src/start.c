@@ -641,7 +641,7 @@ int command_start(int argc, char *argv[]) {
     char logfile_path_buf[PATH_MAX];
 
     for (;;) {
-        int opt = getopt_long(argc - 1, argv + 1, "p:l:u:g:N:k:r:C", start_options, &longind);
+        int opt = getopt_long(argc - 1, argv + 1, "p:l:u:g:N:k:r:C:", start_options, &longind);
 
         if (opt == -1) {
             break;
@@ -685,16 +685,6 @@ int command_start(int argc, char *argv[]) {
                         }
                         break;
                     }
-
-                    case OPT_START_CHDIR:
-                        if (!*optarg) {
-                            fprintf(stderr, "*** error: --chdir cannot be empty string\n");
-                            status = 1;
-                            goto cleanup;
-                        }
-
-                        chdir_path = optarg;
-                        break;
 
                     case OPT_START_CRASH_REPORT:
                         crash_report = optarg;
@@ -795,6 +785,15 @@ int command_start(int argc, char *argv[]) {
                 ++ rlimits_count;
                 break;
             }
+            case 'C':
+                if (!*optarg) {
+                    fprintf(stderr, "*** error: --chdir cannot be empty string\n");
+                    status = 1;
+                    goto cleanup;
+                }
+
+                chdir_path = optarg;
+                break;
 
             case '?':
                 short_usage(argc, argv);

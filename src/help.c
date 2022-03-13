@@ -72,6 +72,8 @@
         "                                       Note that it is not checked if calling setrlimit() in the child process will succeed before forking the child. This means if it doesn't succeed there will be a crash-restart-loop.\n" \
         "                                       See: man setrlimit\n"                                                           \
         "       -k, --umask=UMASK               Run service with umask UMASK. Octal values only.\n"                             \
+        "       -C, --chdir=PATH                Change to directory PATH before running the service. When --chroot is used chdir happens after chroot. The service binary path is relative to this PATH, even without \"./\" prefix.\n" \
+        "           --chroot=PATH               Call chroot with PATH before running the service (and before calling chdir, if given). Unless --chdir is also given the service binary path is relative to this PATH, even without \"./\" prefix.\n" \
         "           --crash-sleep=SECONDS       Wait SECONDS before restarting service. default: 1\n"                           \
         "           --crash-report=COMMAND      Run `COMMAND NAME CODE STATUS LOGFILE` if the service crashed.\n"               \
         "                                       CODE values:\n"                                                                 \

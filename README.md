@@ -89,6 +89,16 @@ COMMANDS:
                                        See: man setrlimit
        -k, --umask=UMASK               Run service with umask UMASK. Octal 
                                        values only.
+       -C, --chdir=PATH                Change to directory PATH before running 
+                                       the service. When --chroot is used chdir
+                                       happens after chroot. The service binary
+                                       path is relative to this PATH, even 
+                                       without "./" prefix.
+           --chroot=PATH               Call chroot with PATH before running the
+                                       service (and before calling chdir, if 
+                                       given). Unless --chdir is also given the
+                                       service binary path is relative to this 
+                                       PATH, even without "./" prefix.
            --crash-sleep=SECONDS       Wait SECONDS before restarting service. 
                                        default: 1
            --crash-report=COMMAND      Run `COMMAND NAME CODE STATUS LOGFILE` if
