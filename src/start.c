@@ -935,7 +935,7 @@ int command_start(int argc, char *argv[]) {
         }
 
         if (!can_execute(abs_command, xuid, xgid)) {
-            fprintf(stderr, "*** error: illegal executable: %s: %s\n", abs_command, strerror(errno));
+            fprintf(stderr, "*** error: illegal service executable: %s: %s\n", abs_command, strerror(errno));
             free(abs_command);
             status = 1;
             goto cleanup;
@@ -981,14 +981,14 @@ int command_start(int argc, char *argv[]) {
         }
 
         if (!can_execute(command, xuid, xgid)) {
-            fprintf(stderr, "*** error: illegal executable: %s: %s\n", command, strerror(errno));
+            fprintf(stderr, "*** error: illegal service executable: %s: %s\n", command, strerror(errno));
             status = 1;
             goto cleanup;
         }
     }
 
     if (crash_report != NULL && !can_execute(crash_report, selfuid, selfgid)) {
-        fprintf(stderr, "*** error: illegal executable: %s: %s\n", crash_report, strerror(errno));
+        fprintf(stderr, "*** error: illegal crash report executable: %s: %s\n", crash_report, strerror(errno));
         status = 1;
         goto cleanup;
     }

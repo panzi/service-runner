@@ -70,8 +70,10 @@ function test_03_status_as_user_of_root_service () {
 }
 
 function test_04_chroot () {
+    local root_dir
+
     root_dir="/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.root"
-    bash_path=$(which bash)
+
     if [[ -e "$root_dir" ]]; then
         rm -r -- "$root_dir"
     fi
@@ -79,17 +81,27 @@ function test_04_chroot () {
     mkdir -p "$root_dir/etc"
     mkdir -p "$root_dir/bin"
     mkdir -p "$root_dir/usr/bin"
+#    mkdir -p "$root_dir/proc"
+#    mkdir -p "$root_dir/sys"
+#    mkdir -p "$root_dir/dev"
 
-    cp -- "$bash_path" "$root_dir/bin"
-    ln -s /bin/bash /usr/bin/bash
-    ln -s /bin/bash /usr/bin/sh
-    ln -s /bin/sh   /usr/bin/sh
-
-    ldd "$bash_path"|grep '=>'|sed 's/.*=> *\([^ ]\+\) .*/\1/'|while read -r so; do
-        so_dir=$(dirname "$so")
-        mkdir -p "$root_dir/$so_dir"
-        cp -- "$so" "$root_dir/$so_dir"
+    for bin in bash basename printf true test sleep; do
+        local bin_path
+        bin_path=$(which "$bin")
+        cp -v -- "$bin_path" "$root_dir/$bin_path"
+        ldd "$bin_path"|grep /|sed 's/^[^/]*\([^ ]\+\).*$/\1/'|while read -r so; do
+            local so_dir
+            so_dir=$(dirname "$so")
+            if [[ ! -e "$root_dir/$so" ]]; then
+                mkdir -p "$root_dir/$so_dir"
+                cp -- "$so" "$root_dir/$so_dir"
+            fi
+        done
     done
+
+    ln -s /usr/bin/bash "$root_dir/bin/bash"
+    ln -s /usr/bin/bash "$root_dir/bin/sh"
+    ln -s /usr/bin/bash "$root_dir/usr/bin/sh"
 
     cat >"$root_dir/etc/passwd" <<EOF
 root::0:0:root:/:/bin/bash
@@ -104,13 +116,15 @@ EOF
     cp -- ./tests/services/long_running_service.sh "$root_dir/bin"
 
     chown -R root:root "$root_dir"
+    mkdir -p -- "$root_dir/home/$sudo_user"
 
-    mkdir -p -- "/home/$sudo_user"
-    chown -R "$sudo_user:$sudo_group" "/home/$sudo_user"
+    chown -R "$sudo_user:$sudo_group" "$root_dir/home/$sudo_user"
 
-    mount -t proc none "$root_dir/proc/"
-    mount --rbind /sys "$root_dir/sys/"
-    mount --rbind /dev "$root_dir/dev/"
+#    mount -t proc none "$root_dir/proc/"
+#    mount --rbind /sys "$root_dir/sys/"
+#    mount --rbind /dev "$root_dir/dev/"
+#
+#    trap "umount '$root_dir/proc/' '$root_dir/sys/' '$root_dir/dev/'" EXIT
 
     assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" \
         --chroot="$root_dir" --chdir="/home/$sudo_user" \

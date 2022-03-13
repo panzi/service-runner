@@ -277,6 +277,7 @@ char *join_pathv(const char *basepath, ...) {
             ++ offset;
         }
         memcpy(buf + offset, relpath, relsize);
+        offset += relsize;
     }
     buf[offset] = 0;
 
