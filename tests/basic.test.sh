@@ -285,9 +285,10 @@ function test_22_auto_restart_never_and_crash () {
 
 function test_22_auto_restart_never_but_request_restart () {
     assert_fail test -e "$PIDFILE.runner"
-    assert_ok   "$SERVICE_RUNNER" start   test --pidfile="$PIDFILE" --logfile="$LOGFILE" --restart=never -- ./tests/services/long_running_service.sh 0.5
+    assert_ok   "$SERVICE_RUNNER" start   test --pidfile="$PIDFILE" --logfile="$LOGFILE" --restart=never -- ./tests/services/long_running_service.sh 0.25
     sleep 0.5
     assert_ok   "$SERVICE_RUNNER" restart test --pidfile="$PIDFILE"
+    sleep 0.5
     assert_grep "service-runner: test exited normally" "$LOGFILE"
     assert_grepv "service-runner: restarting test" "$LOGFILE"
     assert_ok   "$SERVICE_RUNNER" status  test --pidfile="$PIDFILE"
