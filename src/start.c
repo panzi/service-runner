@@ -960,7 +960,7 @@ int command_start(int argc, char *argv[]) {
 
             char *abs_command = join_path(abs_chdir_path, command);
             if (abs_command == NULL) {
-                fprintf(stderr, "*** error: join_path(\"%s\", \"%s\"): %s\n", abs_chdir_path, abs_command, strerror(errno));
+                fprintf(stderr, "*** error: join_path(\"%s\", \"%s\"): %s\n", abs_chdir_path, command, strerror(errno));
                 status = 1;
                 goto cleanup;
             }
