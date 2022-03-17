@@ -164,7 +164,7 @@ int command_logs(int argc, char *argv[]) {
     }
 
     bool modified = true;
-    bool newfile  = true;
+    bool newfile  = false;
     bool pidgone  = false;
 
     for (;;) {
