@@ -56,7 +56,7 @@ function test_05_killed_service () {
     pid=$(cat "$PIDFILE")
     assert_ok kill -SIGKILL "$pid"
     sleep 1
-    assert_grep "service-runner: \*\*\* error: test was killed by signal 9" "$LOGFILE"
+    assert_grep "service-runner: test was killed by signal 9" "$LOGFILE"
     assert_fail "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
     assert_fail pgrep service-runner
 }
@@ -65,7 +65,7 @@ function test_06_failing_service () {
     assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" ./tests/services/failing_service.sh 0
     sleep 1
     assert_grep "exiting now with status 1" "$LOGFILE"
-    assert_grep "service-runner: \*\*\* error: test exited with error status 1" "$LOGFILE"
+    assert_grep "service-runner: test exited with error status 1" "$LOGFILE"
     sleep 1
     assert_grep "service-runner: restarting test" "$LOGFILE"
     assert_ok   "$SERVICE_RUNNER" stop   test --pidfile="$PIDFILE"
@@ -77,7 +77,7 @@ function test_07_crashing_service () {
     assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" ./tests/services/crashing_service.sh 0
     sleep 1
     assert_grep "crashing now with SIGSEGV" "$LOGFILE"
-    assert_grep "service-runner: \*\*\* error: test was killed by signal 11" "$LOGFILE"
+    assert_grep "service-runner: test was killed by signal 11" "$LOGFILE"
     sleep 1
     assert_grep "service-runner: restarting test" "$LOGFILE"
     assert_ok   "$SERVICE_RUNNER" stop   test --pidfile="$PIDFILE"
@@ -186,7 +186,7 @@ function test_15_rlimit_fsize () {
     assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" --rlimit=fsize:4096 ./tests/services/creates_big_file.sh
     sleep 0.5
     assert_grep 'File size limit exceeded(core dumped)' "$LOGFILE"
-    assert_grep '\*\*\* error: test exited with error status 153' "$LOGFILE"
+    assert_grep 'test exited with error status 153' "$LOGFILE"
 
     assert_ok   "$SERVICE_RUNNER" stop   test --pidfile="$PIDFILE"
     assert_fail "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
@@ -212,8 +212,8 @@ function test_18_prevent_crash_restart_loop_before_exec () {
     sleep 0.5
     assert_fail "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
     assert_grep 'service-runner: received signal 15, forwarding to service PID' "$LOGFILE"
-    assert_grep 'service-runner: \*\*\* error: test exited with error status 1' "$LOGFILE"
-    assert_grep '\*\*\* error: (child) premature exit before execv() or failed execv() -> don'\''t restart' "$LOGFILE"
+    assert_grep 'service-runner: test exited with error status 1' "$LOGFILE"
+    assert_grep '(child) premature exit before execv() or failed execv() -> don'\''t restart' "$LOGFILE"
     assert_fail pgrep service-runner
 }
 
@@ -236,7 +236,7 @@ function test_21_auto_restart_always_and_fail () {
     assert_fail test -e "$PIDFILE.runner"
     assert_ok   "$SERVICE_RUNNER" start  test --pidfile="$PIDFILE" --logfile="$LOGFILE" --restart=always -- "$SHELL" -c 'echo "always restart and fail"; exit 1'
     sleep 1.5
-    assert_grep "service-runner: \*\*\* error: test exited with error status 1" "$LOGFILE"
+    assert_grep "service-runner: test exited with error status 1" "$LOGFILE"
     assert_grep "service-runner: restarting test" "$LOGFILE"
     assert_ok test -e "$PIDFILE.runner"
     assert_ok kill -0 "$(cat "$PIDFILE.runner")"
@@ -248,7 +248,7 @@ function test_21_auto_restart_always_and_crash () {
     assert_fail test -e "$PIDFILE.runner"
     assert_ok   "$SERVICE_RUNNER" start  test --pidfile="$PIDFILE" --logfile="$LOGFILE" --restart=always -- "$SHELL" -c 'echo "always restart and crash"; kill -SIGSEGV $$'
     sleep 1.5
-    assert_grep "service-runner: \*\*\* error: test was killed by signal 11" "$LOGFILE"
+    assert_grep "service-runner: test was killed by signal 11" "$LOGFILE"
     assert_grep "service-runner: restarting test" "$LOGFILE"
     assert_ok test -e "$PIDFILE.runner"
     assert_ok kill -0 "$(cat "$PIDFILE.runner")"
@@ -269,7 +269,7 @@ function test_22_auto_restart_never_and_fail () {
     assert_fail test -e "$PIDFILE.runner"
     assert_ok   "$SERVICE_RUNNER" start  test --pidfile="$PIDFILE" --logfile="$LOGFILE" --restart=never -- "$SHELL" -c 'echo "never restart and fail"; exit 1'
     sleep 0.5
-    assert_grep "service-runner: \*\*\* error: test exited with error status 1" "$LOGFILE"
+    assert_grep "service-runner: test exited with error status 1" "$LOGFILE"
     assert_grepv "service-runner: restarting test" "$LOGFILE"
     assert_fail "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
 }
@@ -278,7 +278,7 @@ function test_22_auto_restart_never_and_crash () {
     assert_fail test -e "$PIDFILE.runner"
     assert_ok   "$SERVICE_RUNNER" start  test --pidfile="$PIDFILE" --logfile="$LOGFILE" --restart=never -- "$SHELL" -c 'echo "never restart and crash"; kill -SIGSEGV $$'
     sleep 0.5
-    assert_grep "service-runner: \*\*\* error: test was killed by signal 11" "$LOGFILE"
+    assert_grep "service-runner: test was killed by signal 11" "$LOGFILE"
     assert_grepv "service-runner: restarting test" "$LOGFILE"
     assert_fail "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
 }
@@ -309,7 +309,7 @@ function test_23_auto_restart_failure_and_fail () {
     assert_fail test -e "$PIDFILE.runner"
     assert_ok   "$SERVICE_RUNNER" start  test --pidfile="$PIDFILE" --logfile="$LOGFILE" --restart=failure -- "$SHELL" -c 'sleep 0.25; echo "restart on failure and fail"; exit 1'
     sleep 1.5
-    assert_grep "service-runner: \*\*\* error: test exited with error status 1" "$LOGFILE"
+    assert_grep "service-runner: test exited with error status 1" "$LOGFILE"
     assert_grep "service-runner: restarting test" "$LOGFILE"
     assert_ok test -e "$PIDFILE.runner"
     assert_ok   "$SERVICE_RUNNER" stop   test --pidfile="$PIDFILE"
@@ -320,7 +320,7 @@ function test_23_auto_restart_failure_and_crash () {
     assert_fail test -e "$PIDFILE.runner"
     assert_ok   "$SERVICE_RUNNER" start  test --pidfile="$PIDFILE" --logfile="$LOGFILE" --restart=failure -- "$SHELL" -c 'sleep 0.25; echo "restart on failure and crash"; kill -SIGSEGV $$'
     sleep 2
-    assert_grep "service-runner: \*\*\* error: test was killed by signal 11" "$LOGFILE"
+    assert_grep "service-runner: test was killed by signal 11" "$LOGFILE"
     assert_grep "service-runner: restarting test" "$LOGFILE"
     assert_ok test -e "$PIDFILE.runner"
     assert_ok   "$SERVICE_RUNNER" stop   test --pidfile="$PIDFILE"

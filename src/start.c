@@ -1680,7 +1680,7 @@ int command_start(int argc, char *argv[]) {
                                     running = false;
                                 }
                             } else {
-                                print_error("service-runner: *** error: %s exited with error status %d\n", name, param);
+                                print_error("service-runner: %s exited with error status %d\n", name, param);
                                 crash = true;
                                 if (!restart_issued && restart == RESTART_NEVER) {
                                     running = false;
@@ -1690,14 +1690,14 @@ int command_start(int argc, char *argv[]) {
                             param = WTERMSIG(service_status);
                             if (WCOREDUMP(service_status)) {
                                 code_str = "DUMPED";
-                                print_error("service-runner: *** error: %s was killed by signal %d and dumped core\n", name, param);
+                                print_error("service-runner: %s was killed by signal %d and dumped core\n", name, param);
                                 crash = true;
                                 if (!restart_issued && restart == RESTART_NEVER) {
                                     running = false;
                                 }
                             } else {
                                 code_str = "KILLED";
-                                print_error("service-runner: *** error: %s was killed by signal %d\n", name, param);
+                                print_error("service-runner: %s was killed by signal %d\n", name, param);
 
                                 switch (param) {
                                     case SIGTERM:
