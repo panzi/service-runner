@@ -55,9 +55,10 @@
         "   OPTIONS:\n"                                                                                                         \
         HELP_OPT_PIDFILE                                                                                                        \
         "                                       Note that a second pidfile with the name FILE.runner is created containing the process ID of the service-runner process itself.\n" \
-        "       -l, --logfile=FILE              Write service output to FILE. default: /var/log/NAME-%%Y-%%m-%%d.log\n"         \
+        "       -l, --logfile=FILE              Write service output to FILE. default: /var/log/NAME-%Y-%m-%d.log\n"         \
         "                                       This implements log-rotating based on the file name pattern. See `man strftime` for a description of the pattern language.\n" \
         "           --chown-logfile             Change owner of the logfile to user/group specified by --user/--group.\n"       \
+        "           --log-prefix=FORMAT         Prefix service-runner log messages with FORMAT. default: \"[%Y-%m-%d %H:%M:%S%z] \"\n" \
         "           --restart=WHEN              Restart policy. Possible values for WHEN:\n"                                    \
         "                                         NEVER ..... never restart (except when explicitely requesting restart using the restart command)\n" \
         "                                         ALWAYS .... restart no matter if the service exited normally or with an error status.\n"            \
