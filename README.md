@@ -40,80 +40,81 @@ COMMANDS:
 
    service-runner start <name> [options] [--] <command> [argument...]
 
-       Start <command> as service <name>. Does nothing if the service is already
+       Start <command> as service <name>. Does nothing if the service is already 
        running. This automatically deamonizes, handles PID- and log-files, and 
        restarts on crash.
 
    OPTIONS:
        -p, --pidfile=FILE              Use FILE as the pidfile. default: 
                                        /var/run/NAME.pid
-                                       Note that a second pidfile with the name
-                                       FILE.runner is created containing the 
-                                       process ID of the service-runner process
-                                       itself.
+                                       Note that a second pidfile with the name 
+                                       FILE.runner is created containing the process
+                                       ID of the service-runner process itself.
        -l, --logfile=FILE              Write service output to FILE. default: 
                                        /var/log/NAME-%Y-%m-%d.log
-                                       This implements log-rotating based on the
-                                       file name pattern. See `man strftime` for
-                                       a description of the pattern language.
-           --chown-logfile             Change owner of the logfile to user/group
+                                       This implements log-rotating based on the file
+                                       name pattern. See `man strftime` for a 
+                                       description of the pattern language.
+           --chown-logfile             Change owner of the logfile to user/group 
                                        specified by --user/--group.
            --log-prefix=FORMAT         Prefix service-runner log messages with 
-                                       FORMAT. default: "[%Y-%m-%d %H:%M:%S%z] "
+                                       FORMAT. default: "[%Y-%m-%d %H:%M:%S%z] 
+                                       service-runner: "
+           --log-info-prefix=PREFIX    String inserted between --log-prefix and info
+                                       level log message. default: "[INFO] "
+           --log-error-prefix=PREFIX   String inserted between --log-prefix and error
+                                       level log message. default: "[ERROR] "
            --restart=WHEN              Restart policy. Possible values for WHEN:
-                                         NEVER ..... never restart (except when
-                                                     explicitely requesting 
-                                                     restart using the restart 
-                                                     command)
-                                         ALWAYS .... restart no matter if the 
-                                                     service exited normally or
-                                                     with an error status.
-                                         FAILURE ... (default) only restart the
-                                                     service if it exited with 
-                                                     an error status or crashed.
+                                         NEVER ..... never restart (except when 
+                                                     explicitely requesting restart 
+                                                     using the restart command)
+                                         ALWAYS .... restart no matter if the service
+                                                     exited normally or with an error
+                                                     status.
+                                         FAILURE ... (default) only restart the 
+                                                     service if it exited with an 
+                                                     error status or crashed.
        -u, --user=USER                 Run service as USER (name or UID).
        -g, --group=GROUP               Run service as GROUP (name or GID).
        -N, --priority=PRIORITY         Run service and service-runner(!) under 
-                                       process scheduling priority PRIORITY. 
-                                       From -20 (maximum priority) to +19 
-                                       (minimum priority).
-       -r, --rlimit=RES:SOFT[:HARD]    Run service with given resource limits. 
-                                       This option can be defined multiple 
-                                       times. SOFT/HARD may be an integer or 
-                                       "INFINITY". RES may be an integer or one
-                                       of these names: AS, CORE, CPU, DATA, 
-                                       FSIZE, LOCKS, MEMLOCK, MSGQUEUE, NICE, 
-                                       NOFILE, NPROC, RSS, RTPRIO, RTTIME, 
-                                       SIGPENDING, STACK
+                                       process scheduling priority PRIORITY. From -20
+                                       (maximum priority) to +19 (minimum priority).
+       -r, --rlimit=RES:SOFT[:HARD]    Run service with given resource limits. This 
+                                       option can be defined multiple times. 
+                                       SOFT/HARD may be an integer or "INFINITY". RES
+                                       may be an integer or one of these names: AS, 
+                                       CORE, CPU, DATA, FSIZE, LOCKS, MEMLOCK, 
+                                       MSGQUEUE, NICE, NOFILE, NPROC, RSS, RTPRIO, 
+                                       RTTIME, SIGPENDING, STACK
                                        Note that it is not checked if calling 
-                                       setrlimit() in the child process will 
-                                       succeed before forking the child. This 
-                                       means if it doesn't succeed there will be
-                                       a crash-restart-loop.
+                                       setrlimit() in the child process will succeed
+                                       before forking the child. This means if it 
+                                       doesn't succeed there will be a 
+                                       crash-restart-loop.
                                        See: man setrlimit
-       -k, --umask=UMASK               Run service with umask UMASK. Octal 
-                                       values only.
-       -C, --chdir=PATH                Change to directory PATH before running 
-                                       the service. When --chroot is used chdir
-                                       happens after chroot. The service binary
-                                       path is relative to this PATH, even 
+       -k, --umask=UMASK               Run service with umask UMASK. Octal values 
+                                       only.
+       -C, --chdir=PATH                Change to directory PATH before running the 
+                                       service. When --chroot is used chdir happens 
+                                       after chroot. The service binary path is 
+                                       relative to this PATH, even without "./" 
+                                       prefix.
+           --chroot=PATH               Call chroot with PATH before running the 
+                                       service (and before calling chdir, if given).
+                                       Unless --chdir is also given the service 
+                                       binary path is relative to this PATH, even 
                                        without "./" prefix.
-           --chroot=PATH               Call chroot with PATH before running the
-                                       service (and before calling chdir, if 
-                                       given). Unless --chdir is also given the
-                                       service binary path is relative to this 
-                                       PATH, even without "./" prefix.
-           --crash-sleep=SECONDS       Wait SECONDS before restarting service. 
+           --restart-sleep=SECONDS     Wait SECONDS before restarting service. 
                                        default: 1
-           --crash-report=COMMAND      Run `COMMAND NAME CODE STATUS LOGFILE` if
-                                       the service crashed.
+           --crash-report=COMMAND      Run `COMMAND NAME CODE STATUS LOGFILE` if the
+                                       service crashed.
                                        CODE values:
-                                         EXITED ... service has exited, STATUS 
-                                                    is it's exit status
-                                         KILLED ... service was killed, STATUS 
-                                                    is the killing signal
-                                         DUMPED ... service core dumped, STATUS
-                                                    is the killing signal
+                                         EXITED ... service has exited, STATUS is 
+                                                    it's exit status
+                                         KILLED ... service was killed, STATUS is the
+                                                    killing signal
+                                         DUMPED ... service core dumped, STATUS is 
+                                                    the killing signal
 
    service-runner stop <name> [options]
 
@@ -123,10 +124,9 @@ COMMANDS:
    OPTIONS:
        -p, --pidfile=FILE              Use FILE as the pidfile. default: 
                                        /var/run/NAME.pid
-           --shutdown-timeout=SECONDS  If the service doesn't shut down after 
-                                       SECONDS after sending SIGTERM send 
-                                       SIGKILL. -1 means no timeout, just wait 
-                                       forever. default: -1
+           --shutdown-timeout=SECONDS  If the service doesn't shut down after SECONDS
+                                       after sending SIGTERM send SIGKILL. -1 means 
+                                       no timeout, just wait forever. default: -1
 
    service-runner restart <name> [options]
 
@@ -155,8 +155,8 @@ COMMANDS:
 
    service-runner help [command]
 
-       Print help message to <command>. If no command is passed, prints help 
-       message to all commands.
+       Print help message to <command>. If no command is passed, prints help message
+       to all commands.
 
    service-runner version
 

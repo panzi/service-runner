@@ -201,6 +201,8 @@ enum {
     OPT_START_LOGFILE,
     OPT_START_CHOWN_LOGFILE,
     OPT_START_LOG_PREFIX,
+    OPT_START_LOG_INFO_PREFIX,
+    OPT_START_LOG_ERROR_PREFIX,
     OPT_START_USER,
     OPT_START_GROUP,
     OPT_START_PRIORITY,
@@ -211,26 +213,28 @@ enum {
     // TODO: --procsched and --iosched?
     OPT_START_RESTART,
     OPT_START_CRASH_REPORT,
-    OPT_START_CRASH_SLEEP,
+    OPT_START_RESTART_SLEEP,
     OPT_START_COUNT,
 };
 
 static const struct option start_options[] = {
-    [OPT_START_PIDFILE]       = { "pidfile",       required_argument, 0, 'p' },
-    [OPT_START_LOGFILE]       = { "logfile",       required_argument, 0, 'l' },
-    [OPT_START_CHOWN_LOGFILE] = { "chown-logfile", no_argument,       0,  0  },
-    [OPT_START_LOG_PREFIX]    = { "log-prefix",    required_argument, 0,  0  },
-    [OPT_START_USER]          = { "user",          required_argument, 0, 'u' },
-    [OPT_START_GROUP]         = { "group",         required_argument, 0, 'g' },
-    [OPT_START_PRIORITY]      = { "priority",      required_argument, 0, 'N' },
-    [OPT_START_RLIMIT]        = { "rlimit",        required_argument, 0, 'r' },
-    [OPT_START_UMASK]         = { "umask",         required_argument, 0, 'k' },
-    [OPT_START_CHROOT]        = { "chroot",        required_argument, 0,  0  },
-    [OPT_START_CHDIR]         = { "chdir",         required_argument, 0, 'C' },
-    [OPT_START_RESTART]       = { "restart",       required_argument, 0,  0  },
-    [OPT_START_CRASH_REPORT]  = { "crash-report",  required_argument, 0,  0  },
-    [OPT_START_CRASH_SLEEP]   = { "crash-sleep",   required_argument, 0,  0  },
-    [OPT_START_COUNT]         = { 0, 0, 0, 0 },
+    [OPT_START_PIDFILE]          = { "pidfile",          required_argument, 0, 'p' },
+    [OPT_START_LOGFILE]          = { "logfile",          required_argument, 0, 'l' },
+    [OPT_START_CHOWN_LOGFILE]    = { "chown-logfile",    no_argument,       0,  0  },
+    [OPT_START_LOG_PREFIX]       = { "log-prefix",       required_argument, 0,  0  },
+    [OPT_START_LOG_INFO_PREFIX]  = { "log-info-prefix",  required_argument, 0,  0  },
+    [OPT_START_LOG_ERROR_PREFIX] = { "log-error-prefix", required_argument, 0,  0  },
+    [OPT_START_USER]             = { "user",             required_argument, 0, 'u' },
+    [OPT_START_GROUP]            = { "group",            required_argument, 0, 'g' },
+    [OPT_START_PRIORITY]         = { "priority",         required_argument, 0, 'N' },
+    [OPT_START_RLIMIT]           = { "rlimit",           required_argument, 0, 'r' },
+    [OPT_START_UMASK]            = { "umask",            required_argument, 0, 'k' },
+    [OPT_START_CHROOT]           = { "chroot",           required_argument, 0,  0  },
+    [OPT_START_CHDIR]            = { "chdir",            required_argument, 0, 'C' },
+    [OPT_START_RESTART]          = { "restart",          required_argument, 0,  0  },
+    [OPT_START_CRASH_REPORT]     = { "crash-report",     required_argument, 0,  0  },
+    [OPT_START_RESTART_SLEEP]    = { "restart-sleep",    required_argument, 0,  0  },
+    [OPT_START_COUNT]            = { 0, 0, 0, 0 },
 };
 
 enum Restart {
@@ -239,7 +243,9 @@ enum Restart {
     RESTART_FAILURE = 2,
 };
 
-static const char *log_prefix = "[%Y-%m-%d %H:%M:%S%z] ";
+static const char *log_prefix = "[%Y-%m-%d %H:%M:%S%z] service-runner: ";
+static const char *log_info_prefix = "[INFO] ";
+static const char *log_error_prefix = "[ERROR] ";
 static pid_t service_pid = 0;
 static int service_pidfd = -1;
 static volatile bool running = false;
@@ -268,12 +274,13 @@ __attribute__((format(printf, 2, 3))) void print_log(FILE *fp, const char *fmt, 
     va_end(ap);
 }
 
-#if !defined(NDEBUG)
-    #define print_log(FP, FMT, ...) print_log((FP), "%s:%d: " FMT, __FILE__, __LINE__, ## __VA_ARGS__)
+#ifndef NDEBUG
+    #define print_info(FMT,  ...) print_log(stdout, "%s %s:%d: " FMT, log_info_prefix,  __FILE__, __LINE__, ## __VA_ARGS__)
+    #define print_error(FMT, ...) print_log(stderr, "%s %s:%d: " FMT, log_error_prefix, __FILE__, __LINE__, ## __VA_ARGS__)
+#else
+    #define print_info(FMT,  ...) print_log(stdout, "%s" FMT, log_info_prefix,  ## __VA_ARGS__)
+    #define print_error(FMT, ...) print_log(stderr, "%s" FMT, log_error_prefix, ## __VA_ARGS__)
 #endif
-
-#define print_info(FMT,  ...) print_log(stdout, "[INFO] "  FMT, ## __VA_ARGS__)
-#define print_error(FMT, ...) print_log(stderr, "[ERROR] " FMT, ## __VA_ARGS__)
 
 static bool is_valid_name(const char *name) {
     if (!*name) {
@@ -568,7 +575,7 @@ static void handles_stop_signal(int sig) {
 
     assert(getpid() != service_pid);
 
-    print_info("service-runner: received signal %d, forwarding to service PID %u\n", sig, service_pid);
+    print_info("received signal %d, forwarding to service PID %u\n", sig, service_pid);
     running = false;
 
     if (service_pidfd != -1) {
@@ -596,7 +603,7 @@ static void handle_restart_signal(int sig) {
 
     assert(getpid() != service_pid);
 
-    print_info("service-runner: received signal %d, restarting service...\n", sig);
+    print_info("received signal %d, restarting service...\n", sig);
     restart_issued = true;
 
     if (service_pidfd != -1) {
@@ -645,7 +652,7 @@ int command_start(int argc, char *argv[]) {
 
     bool chown_logfile = false;
     const char *crash_report = NULL;
-    unsigned int crash_sleep = 1;
+    unsigned int restart_sleep = 1;
 
     enum Restart restart = RESTART_FAILURE;
 
@@ -690,6 +697,14 @@ int command_start(int argc, char *argv[]) {
                         log_prefix = !*optarg ? NULL : optarg;
                         break;
 
+                    case OPT_START_LOG_INFO_PREFIX:
+                        log_info_prefix = optarg;
+                        break;
+
+                    case OPT_START_LOG_ERROR_PREFIX:
+                        log_error_prefix = optarg;
+                        break;
+
                     case OPT_START_RESTART:
                         if (strcasecmp("ALWAYS", optarg) == 0) {
                             restart = RESTART_ALWAYS;
@@ -726,16 +741,16 @@ int command_start(int argc, char *argv[]) {
                         crash_report = optarg;
                         break;
 
-                    case OPT_START_CRASH_SLEEP:
+                    case OPT_START_RESTART_SLEEP:
                     {
                         char *endptr = NULL;
                         unsigned long value = strtoul(optarg, &endptr, 10);
                         if (!*optarg || *endptr || value > UINT_MAX) {
-                            print_error("illegal value for --crash-sleep: %s\n", optarg);
+                            print_error("illegal value for --restart-sleep: %s\n", optarg);
                             status = 1;
                             goto cleanup;
                         }
-                        crash_sleep = value;
+                        restart_sleep = value;
                         break;
                     }
                 }
@@ -1675,12 +1690,12 @@ int command_start(int argc, char *argv[]) {
                             code_str = "EXITED";
 
                             if (param == 0) {
-                                print_info("service-runner: %s exited normally\n", name);
+                                print_info("%s exited normally\n", name);
                                 if (!restart_issued && restart != RESTART_ALWAYS) {
                                     running = false;
                                 }
                             } else {
-                                print_error("service-runner: %s exited with error status %d\n", name, param);
+                                print_error("%s exited with error status %d\n", name, param);
                                 crash = true;
                                 if (!restart_issued && restart == RESTART_NEVER) {
                                     running = false;
@@ -1690,14 +1705,14 @@ int command_start(int argc, char *argv[]) {
                             param = WTERMSIG(service_status);
                             if (WCOREDUMP(service_status)) {
                                 code_str = "DUMPED";
-                                print_error("service-runner: %s was killed by signal %d and dumped core\n", name, param);
+                                print_error("%s was killed by signal %d and dumped core\n", name, param);
                                 crash = true;
                                 if (!restart_issued && restart == RESTART_NEVER) {
                                     running = false;
                                 }
                             } else {
                                 code_str = "KILLED";
-                                print_error("service-runner: %s was killed by signal %d\n", name, param);
+                                print_error("%s was killed by signal %d\n", name, param);
 
                                 switch (param) {
                                     case SIGTERM:
@@ -1711,7 +1726,7 @@ int command_start(int argc, char *argv[]) {
                                     case SIGINT:
                                     case SIGKILL:
                                         if (restart != RESTART_ALWAYS) {
-                                            print_info("service-runner: service stopped via signal %d -> don't restart\n", param);
+                                            print_info("service stopped via signal %d -> don't restart\n", param);
                                             running = false;
                                         }
                                         break;
@@ -1784,14 +1799,14 @@ int command_start(int argc, char *argv[]) {
                                 }
                             }
 
-                            if (running && crash_sleep) {
+                            if (running && restart_sleep) {
                                 if (time_ok) {
                                     time_t secs = ts_after.tv_sec - ts_before.tv_sec;
-                                    if (secs <= crash_sleep) {
-                                        sleep(crash_sleep - secs);
+                                    if (secs <= restart_sleep) {
+                                        sleep(restart_sleep - secs);
                                     }
                                 } else {
-                                    sleep(crash_sleep);
+                                    sleep(restart_sleep);
                                 }
                             }
                         }
@@ -1817,7 +1832,7 @@ int command_start(int argc, char *argv[]) {
         }
 
         if (running) {
-            print_info("service-runner: restarting %s...\n", name);
+            print_info("restarting %s...\n", name);
         }
     }
 

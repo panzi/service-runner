@@ -58,7 +58,9 @@
         "       -l, --logfile=FILE              Write service output to FILE. default: /var/log/NAME-%Y-%m-%d.log\n"         \
         "                                       This implements log-rotating based on the file name pattern. See `man strftime` for a description of the pattern language.\n" \
         "           --chown-logfile             Change owner of the logfile to user/group specified by --user/--group.\n"       \
-        "           --log-prefix=FORMAT         Prefix service-runner log messages with FORMAT. default: \"[%Y-%m-%d %H:%M:%S%z] \"\n" \
+        "           --log-prefix=FORMAT         Prefix service-runner log messages with FORMAT. default: \"[%Y-%m-%d %H:%M:%S%z] service-runner: \"\n" \
+        "           --log-info-prefix=PREFIX    String inserted between --log-prefix and info level log message. default: \"[INFO] \"\n" \
+        "           --log-error-prefix=PREFIX   String inserted between --log-prefix and error level log message. default: \"[ERROR] \"\n" \
         "           --restart=WHEN              Restart policy. Possible values for WHEN:\n"                                    \
         "                                         NEVER ..... never restart (except when explicitely requesting restart using the restart command)\n" \
         "                                         ALWAYS .... restart no matter if the service exited normally or with an error status.\n"            \
@@ -75,7 +77,7 @@
         "       -k, --umask=UMASK               Run service with umask UMASK. Octal values only.\n"                             \
         "       -C, --chdir=PATH                Change to directory PATH before running the service. When --chroot is used chdir happens after chroot. The service binary path is relative to this PATH, even without \"./\" prefix.\n" \
         "           --chroot=PATH               Call chroot with PATH before running the service (and before calling chdir, if given). Unless --chdir is also given the service binary path is relative to this PATH, even without \"./\" prefix.\n" \
-        "           --crash-sleep=SECONDS       Wait SECONDS before restarting service. default: 1\n"                           \
+        "           --restart-sleep=SECONDS     Wait SECONDS before restarting service. default: 1\n"                           \
         "           --crash-report=COMMAND      Run `COMMAND NAME CODE STATUS LOGFILE` if the service crashed.\n"               \
         "                                       CODE values:\n"                                                                 \
         "                                         EXITED ... service has exited, STATUS is it's exit status\n"                  \
