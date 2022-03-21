@@ -1311,7 +1311,7 @@ int command_start(int argc, char *argv[]) {
             status = 1;
             goto cleanup;
         } else if (service_pid == 0) {
-            // child: servoce process
+            // child: service process
             cleanup_pidfiles = false;
 
             if (write_pidfile(pidfile, getpid()) != 0) {
