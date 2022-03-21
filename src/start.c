@@ -1315,7 +1315,7 @@ int command_start(int argc, char *argv[]) {
             cleanup_pidfiles = false;
 
             if (write_pidfile(pidfile, getpid()) != 0) {
-                print_error("write_pidfile(\"%s\", %u): %s\n", pidfile, getpid(), strerror(errno));
+                print_error("(child) write_pidfile(\"%s\", %u): %s\n", pidfile, getpid(), strerror(errno));
                 signal_premature_exit(runner_pid);
                 status = 1;
                 goto cleanup;
@@ -1344,7 +1344,7 @@ int command_start(int argc, char *argv[]) {
             for (size_t index = 0; index < rlimits_count; ++ index) {
                 struct rlimit_params *lim = &rlimits[index];
                 if (setrlimit(lim->resource, &lim->limit) != 0) {
-                    print_error("setrlimit(%d, { .rlim_cur = %ld, .rlim_max = %ld }): %s\n",
+                    print_error("(child) setrlimit(%d, { .rlim_cur = %ld, .rlim_max = %ld }): %s\n",
                         lim->resource,
                         lim->limit.rlim_cur,
                         lim->limit.rlim_max,
