@@ -43,6 +43,14 @@
     #define RLIMIT_STACK_STR
 #endif
 
+#ifdef NDEBUG
+    #define LOG_FORMAT_JSON_DEBUG_STR
+#else
+    #define LOG_FORMAT_JSON_DEBUG_STR \
+        "                                           \"filename\":  string,\n" \
+        "                                           \"lineno\":    number,\n"
+#endif
+
 #define HELP_OPT_PIDFILE \
         "       -p, --pidfile=FILE              Use FILE as the pidfile. default: /var/run/NAME.pid\n"
 
@@ -55,12 +63,21 @@
         "   OPTIONS:\n"                                                                                                         \
         HELP_OPT_PIDFILE                                                                                                        \
         "                                       Note that a second pidfile with the name FILE.runner is created containing the process ID of the service-runner process itself.\n" \
-        "       -l, --logfile=FILE              Write service output to FILE. default: /var/log/NAME-%Y-%m-%d.log\n"         \
+        "       -l, --logfile=FILE              Write service output to FILE. default: /var/log/NAME-%Y-%m-%d.log\n"            \
         "                                       This implements log-rotating based on the file name pattern. See `man strftime` for a description of the pattern language.\n" \
         "           --chown-logfile             Change owner of the logfile to user/group specified by --user/--group.\n"       \
-        "           --log-prefix=FORMAT         Prefix service-runner log messages with FORMAT. default: \"[%Y-%m-%d %H:%M:%S%z] service-runner: \"\n" \
-        "           --log-info-prefix=PREFIX    String inserted between --log-prefix and info level log message. default: \"[INFO] \"\n" \
-        "           --log-error-prefix=PREFIX   String inserted between --log-prefix and error level log message. default: \"[ERROR] \"\n" \
+        "           --log-format=FORMAT         Either TEXT or JSON. default: TEXT\n"                                           \
+        "                                       JSON log-record structure is this, but in one line:\n"                          \
+        "                                       {\n"                                                                            \
+        "                                           \"level\":     \"info\" | \"error\",\n"                                     \
+        "                                           \"timestamp\": \"%Y-%m-%dT%H:%M:%S%z\",\n"                                  \
+        "                                           \"source\":    \"service-runner\",\n"                                       \
+        LOG_FORMAT_JSON_DEBUG_STR                                                                                               \
+        "                                           \"message\":   string\n"                                                    \
+        "                                       }\n"                                                                            \
+        "           --log-prefix=FORMAT         Prefix service-runner log messages with FORMAT. (Only for --log-format=TEXT) default: \"[%Y-%m-%d %H:%M:%S%z] service-runner: \"\n" \
+        "           --log-info-prefix=PREFIX    String inserted between --log-prefix and info level log message. (Only for --log-format=TEXT) default: \"[INFO] \"\n" \
+        "           --log-error-prefix=PREFIX   String inserted between --log-prefix and error level log message. (Only for --log-format=TEXT) default: \"[ERROR] \"\n" \
         "           --restart=WHEN              Restart policy. Possible values for WHEN:\n"                                    \
         "                                         NEVER ..... never restart (except when explicitely requesting restart using the restart command)\n" \
         "                                         ALWAYS .... restart no matter if the service exited normally or with an error status.\n"            \

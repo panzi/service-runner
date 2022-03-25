@@ -57,13 +57,26 @@ COMMANDS:
                                        description of the pattern language.
            --chown-logfile             Change owner of the logfile to user/group 
                                        specified by --user/--group.
+           --log-format=FORMAT         Either TEXT or JSON. default: TEXT
+                                       JSON log-record structure is this, but in one
+                                       line:
+                                       {
+                                           "level":     "info" | "error",
+                                           "timestamp": "%Y-%m-%dT%H:%M:%S%z",
+                                           "source":    "service-runner",
+                                           "filename":  string,
+                                           "lineno":    number,
+                                           "message":   string
+                                       }
            --log-prefix=FORMAT         Prefix service-runner log messages with 
-                                       FORMAT. default: "[%Y-%m-%d %H:%M:%S%z] 
-                                       service-runner: "
+                                       FORMAT. (Only for --log-format=TEXT) default:
+                                       "[%Y-%m-%d %H:%M:%S%z] service-runner: "
            --log-info-prefix=PREFIX    String inserted between --log-prefix and info
-                                       level log message. default: "[INFO] "
+                                       level log message. (Only for 
+                                       --log-format=TEXT) default: "[INFO] "
            --log-error-prefix=PREFIX   String inserted between --log-prefix and error
-                                       level log message. default: "[ERROR] "
+                                       level log message. (Only for 
+                                       --log-format=TEXT) default: "[ERROR] "
            --restart=WHEN              Restart policy. Possible values for WHEN:
                                          NEVER ..... never restart (except when 
                                                      explicitely requesting restart 
