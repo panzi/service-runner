@@ -57,54 +57,61 @@ COMMANDS:
                                        description of the pattern language.
            --chown-logfile             Change owner of the logfile to user/group 
                                        specified by --user/--group.
-           --log-format=FORMAT         Either TEXT or JSON. default: TEXT
-                                       JSON log-record structure is this, but in one
-                                       line:
-                                       {
-                                           "level":     "info" | "error",
-                                           "timestamp": "%Y-%m-%dT%H:%M:%S%z",
-                                           "source":    "service-runner",
-                                           "filename":  string,
-                                           "lineno":    number,
-                                           "message":   string
-                                       }
-           --log-prefix=FORMAT         Prefix service-runner log messages with 
-                                       FORMAT. (Only for --log-format=TEXT) default:
-                                       "[%Y-%m-%d %H:%M:%S%z] service-runner: "
-           --log-info-prefix=PREFIX    String inserted between --log-prefix and info
-                                       level log message. (Only for 
-                                       --log-format=TEXT) default: "[INFO] "
-           --log-error-prefix=PREFIX   String inserted between --log-prefix and error
-                                       level log message. (Only for 
-                                       --log-format=TEXT) default: "[ERROR] "
-           --restart=WHEN              Restart policy. Possible values for WHEN:
-                                         NEVER ..... never restart (except when 
-                                                     explicitely requesting restart 
-                                                     using the restart command)
-                                         ALWAYS .... restart no matter if the service
-                                                     exited normally or with an error
-                                                     status.
-                                         FAILURE ... (default) only restart the 
-                                                     service if it exited with an 
-                                                     error status or crashed.
+           --log-format=FORMAT
+             
+             Format of service-runner's own log messages.
+             FORMAT values:
+               text ................ '[%t] service-runner: %f:%n: [%L] %s' (default)
+               json ................ '{"level":"%l","timestamp":"%T","source":"service-runner","message":"%j"}'
+               template:TEMPLATE ... Interpolate given TEMPLATE.
+
+             Template syntax:
+               %Y ... 4 digit year
+               %m ... 2 digit month
+               %d ... 2 digit day
+               %H ... 2 digit hour (24 hour clock)
+               %M ... 2 digit minute
+               %S ... 2 digit second
+               %z ... time zone offset
+               %s ... log message
+               %j ... JSON encoded log message (no enclosing quotes)
+               %f ... source filename
+               %F ... JSON encoded filename (no enclosing quotes)
+               %n ... line number
+               %l ... "info" or "error"
+               %L ... "INFO" or "ERROR"
+               %t ... equivalent to '%Y-%m-%d %H:%M:%S%z'
+               %T ... equivalent to '%Y-%m-%dT%H:%M:%S%z'
+               %% ... outputs %
+
+           --restart=WHEN
+
+             Restart policy. Possible values for WHEN:
+               NEVER ..... never restart (except when explicitely requesting restart
+                           using the restart command)
+               ALWAYS .... restart no matter if the service exited normally or with 
+                           an error status.
+               FAILURE ... (default) only restart the service if it exited with an 
+                           error status or crashed.
+
        -u, --user=USER                 Run service as USER (name or UID).
        -g, --group=GROUP               Run service as GROUP (name or GID).
        -N, --priority=PRIORITY         Run service and service-runner(!) under 
                                        process scheduling priority PRIORITY. From -20
                                        (maximum priority) to +19 (minimum priority).
-       -r, --rlimit=RES:SOFT[:HARD]    Run service with given resource limits. This 
-                                       option can be defined multiple times. 
-                                       SOFT/HARD may be an integer or "INFINITY". RES
-                                       may be an integer or one of these names: AS, 
-                                       CORE, CPU, DATA, FSIZE, LOCKS, MEMLOCK, 
-                                       MSGQUEUE, NICE, NOFILE, NPROC, RSS, RTPRIO, 
-                                       RTTIME, SIGPENDING, STACK
-                                       Note that it is not checked if calling 
-                                       setrlimit() in the child process will succeed
-                                       before forking the child. This means if it 
-                                       doesn't succeed there will be a 
-                                       crash-restart-loop.
-                                       See: man setrlimit
+       -r, --rlimit=RES:SOFT[:HARD]
+
+             Run service with given resource limits. This option can be defined 
+             multiple times. SOFT/HARD may be an integer or "INFINITY". RES may be an
+             integer or one of these names: AS, CORE, CPU, DATA, FSIZE, LOCKS, 
+             MEMLOCK, MSGQUEUE, NICE, NOFILE, NPROC, RSS, RTPRIO, RTTIME, SIGPENDING,
+             STACK
+
+             Note that it is not checked if calling setrlimit() in the child process
+             will succeed before forking the child. This means if it doesn't succeed
+             there will be a crash-restart-loop.
+             See: man setrlimit
+
        -k, --umask=UMASK               Run service with umask UMASK. Octal values 
                                        only.
        -C, --chdir=PATH                Change to directory PATH before running the 
@@ -119,15 +126,13 @@ COMMANDS:
                                        without "./" prefix.
            --restart-sleep=SECONDS     Wait SECONDS before restarting service. 
                                        default: 1
-           --crash-report=COMMAND      Run `COMMAND NAME CODE STATUS LOGFILE` if the
-                                       service crashed.
-                                       CODE values:
-                                         EXITED ... service has exited, STATUS is 
-                                                    it's exit status
-                                         KILLED ... service was killed, STATUS is the
-                                                    killing signal
-                                         DUMPED ... service core dumped, STATUS is 
-                                                    the killing signal
+           --crash-report=COMMAND
+
+             Run `COMMAND NAME CODE STATUS LOGFILE` if the service crashed.
+             CODE values:
+               EXITED ... service has exited, STATUS is it's exit status
+               KILLED ... service was killed, STATUS is the killing signal
+               DUMPED ... service core dumped, STATUS is the killing signal
 
    service-runner stop <name> [options]
 

@@ -7,7 +7,7 @@ RELEASE=OFF
 PREFIX=/usr/local/bin
 
 ifeq ($(RELEASE),ON)
-    CFLAGS += -O2
+    CFLAGS += -O2 -DNDEBUG
 else
     CFLAGS += -g
 endif

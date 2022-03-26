@@ -42,6 +42,38 @@
 #define PIPE_WRITE 1
 #define SPLICE_SZIE ((size_t)2 * 1024 * 1024 * 1024)
 
+// %Y ... 4 digit year
+// %m ... 2 digit month
+// %d ... 2 digit day
+// %H ... 2 digit hour (24 hour clock)
+// %M ... 2 digit minute
+// %S ... 2 digit second
+// %z ... time zone offset
+// %s ... log message
+// %j ... JSON encoded log message (no enclosing quotes)
+// %f ... source filename
+// %F ... JSON encoded filename (no enclosing quotes)
+// %n ... line number
+// %l ... "info" or "error"
+// %L ... "INFO" or "ERROR"
+// %t ... %Y-%m-%d %H:%M:%S%z
+// %T ... %Y-%m-%dT%H:%M:%S%z
+// %% ... %
+
+#define LOG_LEVEL_UPPER_INFO_STR  "INFO"
+#define LOG_LEVEL_UPPER_ERROR_STR "ERROR"
+
+#define LOG_LEVEL_LOWER_INFO_STR  "info"
+#define LOG_LEVEL_LOWER_ERROR_STR "error"
+
+#define LOG_LEVEL_INFO_LEN  4
+#define LOG_LEVEL_ERROR_LEN 5
+
+enum LogLevel {
+    LOG_LEVEL_INFO  = 1,
+    LOG_LEVEL_ERROR = 2,
+};
+
 extern char **environ;
 
 // static int cap_get_bound(int cap) {
@@ -201,9 +233,6 @@ enum {
     OPT_START_LOGFILE,
     OPT_START_CHOWN_LOGFILE,
     OPT_START_LOG_FORMAT,
-    OPT_START_LOG_PREFIX,
-    OPT_START_LOG_INFO_PREFIX,
-    OPT_START_LOG_ERROR_PREFIX,
     OPT_START_USER,
     OPT_START_GROUP,
     OPT_START_PRIORITY,
@@ -223,9 +252,6 @@ static const struct option start_options[] = {
     [OPT_START_LOGFILE]          = { "logfile",          required_argument, 0, 'l' },
     [OPT_START_CHOWN_LOGFILE]    = { "chown-logfile",    no_argument,       0,  0  },
     [OPT_START_LOG_FORMAT]       = { "log-format",       required_argument, 0,  0  },
-    [OPT_START_LOG_PREFIX]       = { "log-prefix",       required_argument, 0,  0  },
-    [OPT_START_LOG_INFO_PREFIX]  = { "log-info-prefix",  required_argument, 0,  0  },
-    [OPT_START_LOG_ERROR_PREFIX] = { "log-error-prefix", required_argument, 0,  0  },
     [OPT_START_USER]             = { "user",             required_argument, 0, 'u' },
     [OPT_START_GROUP]            = { "group",            required_argument, 0, 'g' },
     [OPT_START_PRIORITY]         = { "priority",         required_argument, 0, 'N' },
@@ -250,10 +276,7 @@ enum LogFormat {
     LOG_FORMAT_JSON = 1,
 };
 
-static enum LogFormat log_format = LOG_FORMAT_TEXT;
-static const char *log_prefix = "[%Y-%m-%d %H:%M:%S%z] service-runner: ";
-static const char *log_info_prefix = "[INFO] ";
-static const char *log_error_prefix = "[ERROR] ";
+static const char *log_format = LOG_TEMPLATE_TEXT;
 static pid_t service_pid = 0;
 static int service_pidfd = -1;
 static volatile bool running = false;
@@ -263,29 +286,6 @@ static volatile bool got_sigchld = false;
 #if !defined(__GNUC__) && !defined(__clang__)
     #define __attribute__(X)
 #endif
-
-__attribute__((format(printf, 2, 3))) static void print_log_text(FILE *fp, const char *fmt, ...) {
-    if (log_prefix != NULL) {
-        char buf[4096];
-        const time_t now = time(NULL);
-        struct tm local_now;
-        size_t size;
-
-        if (localtime_r(&now, &local_now) != NULL && (size = strftime(buf, sizeof(buf), log_prefix, &local_now)) > 0) {
-            fwrite(buf, size, 1, fp);
-        }
-    }
-
-    va_list ap;
-    va_start(ap, fmt);
-    vfprintf(fp, fmt, ap);
-    va_end(ap);
-}
-
-enum LogLevel {
-    LOG_LEVEL_INFO  = 1,
-    LOG_LEVEL_ERROR = 2,
-};
 
 static void print_json_string(FILE *fp, const char *str) {
     const char *prev = str;
@@ -354,33 +354,26 @@ static void print_json_string(FILE *fp, const char *str) {
     }
 }
 
-__attribute__((format(printf, 5, 6))) static void print_log_json(FILE *fp, enum LogLevel level, const char *filename, size_t lineno, const char *fmt, ...) {
+__attribute__((format(printf, 6, 7))) static void print_log_template(FILE *fp, const char *template, enum LogLevel level, const char *filename, size_t lineno, const char *fmt, ...) {
     char buf[4096];
+    const char *msg = buf;
+    bool free_msg = false;
     const time_t now = time(NULL);
-    struct tm local_now;
+    struct tm local_now = {
+        .tm_year   = 0,
+        .tm_mon    = 0,
+        .tm_mday   = 0,
+        .tm_wday   = 0,
+        .tm_hour   = 0,
+        .tm_min    = 0,
+        .tm_sec    = 0,
+        .tm_isdst  = 0,
+        .tm_gmtoff = 0,
+        .tm_zone   = NULL,
+    };
 
-    fprintf(fp, "{\"level\":\"%s\",\"timestamp\":", level == LOG_LEVEL_INFO ? "info" : "error");
-
-    if (localtime_r(&now, &local_now) != NULL) {
-        size_t size = strftime(buf, sizeof(buf), "\"%Y-%m-%dT%H:%M:%S%z\"", &local_now);
-        if (size > 0) {
-            fwrite(buf, size, 1, fp);
-        }
-    } else {
-        fprintf(fp, "%ld", now);
-    }
-
-    fprintf(fp, ",\"source\":\"service-runner\"");
-
-    if (filename != NULL) {
-        fprintf(fp, ",\"filename\":\"");
-        print_json_string(fp, filename);
-        fprintf(fp, "\",\"lineno\":%zu", lineno);
-    }
-
-    fprintf(fp, ",\"message\":\"");
-
-    // TODO: log prefix?
+    struct tm *tmptr = localtime_r(&now, &local_now);
+    assert(tmptr != NULL); (void)tmptr;
 
     va_list ap;
     va_start(ap, fmt);
@@ -389,44 +382,162 @@ __attribute__((format(printf, 5, 6))) static void print_log_json(FILE *fp, enum 
 
     if (count >= 0) {
         if (count < sizeof(buf)) {
-            print_json_string(fp, buf);
+            msg = buf;
         } else {
             size_t size = (size_t)count + 1;
             char *buf = malloc(size);
             if (buf == NULL) {
-                print_json_string(fp, strerror(errno));
+                msg = strerror(errno);
             } else {
+                free_msg = true;
                 va_start(ap, fmt);
                 count = vsnprintf(buf, size, fmt, ap);
                 assert(count >= 0 && (size_t)count < size);
                 va_end(ap);
-                print_json_string(fp, buf);
-                free(buf);
             }
+        }
+    } else {
+        msg = strerror(errno);
+    }
+
+    int tzoff = local_now.tm_gmtoff / 60;
+    char tzsign;
+    if (tzoff < 0) {
+        tzsign = '+';
+        tzoff  = -tzoff;
+    } else {
+        tzsign = '-';
+    }
+    int tzhour = tzoff / 60;
+    int tzmin  = tzoff % 60;
+
+    const char *prev = template;
+    for (const char *ptr = template;;) {
+        char ch = *ptr;
+
+        if (ch == 0) {
+            fwrite(prev, ptr - prev, 1, fp);
+            break;
+        } else if (ch == '%') {
+            fwrite(prev, ptr - prev, 1, fp);
+            ++ ptr;
+            ch = *ptr;
+            if (ch == 0) {
+                fputc('%', fp);
+                break;
+            }
+            prev = ++ ptr;
+            switch (ch) {
+                case 'Y':
+                    fprintf(fp, "%04d", local_now.tm_year);
+                    break;
+
+                case 'm':
+                    fprintf(fp, "%02d", local_now.tm_mon + 1);
+                    break;
+
+                case 'd':
+                    fprintf(fp, "%02d", local_now.tm_mday);
+                    break;
+
+                case 'H':
+                    fprintf(fp, "%02d", local_now.tm_hour);
+                    break;
+
+                case 'M':
+                    fprintf(fp, "%02d", local_now.tm_min);
+                    break;
+
+                case 'S':
+                    fprintf(fp, "%02d", local_now.tm_sec);
+                    break;
+
+                case 'z':
+                    fprintf(fp, "%c%02d%02d", tzsign, tzhour, tzmin);
+                    break;
+
+                case 't':
+                    fprintf(fp, "%04d-%02d-%02d %02d:%02d:%02d%c%02d%02d",
+                        local_now.tm_year,
+                        local_now.tm_mon + 1,
+                        local_now.tm_mday,
+                        local_now.tm_hour,
+                        local_now.tm_min,
+                        local_now.tm_sec,
+                        tzsign,
+                        tzhour,
+                        tzmin
+                    );
+                    break;
+
+                case 'T':
+                    fprintf(fp, "%04d-%02d-%02dT%02d:%02d:%02d%c%02d%02d",
+                        local_now.tm_year,
+                        local_now.tm_mon + 1,
+                        local_now.tm_mday,
+                        local_now.tm_hour,
+                        local_now.tm_min,
+                        local_now.tm_sec,
+                        tzsign,
+                        tzhour,
+                        tzmin
+                    );
+                    break;
+
+                case 's':
+                    fwrite(msg, strlen(msg), 1, fp);
+                    break;
+
+                case 'j':
+                    print_json_string(fp, msg);
+                    break;
+
+                case 'f':
+                    fwrite(filename, strlen(filename), 1, fp);
+                    break;
+
+                case 'F':
+                    print_json_string(fp, filename);
+                    break;
+
+                case 'n':
+                    fprintf(fp, "%zu", lineno);
+                    break;
+
+                case 'l':
+                    if (level == LOG_LEVEL_INFO) {
+                        fwrite(LOG_LEVEL_LOWER_INFO_STR, LOG_LEVEL_INFO_LEN, 1, fp);
+                    } else {
+                        fwrite(LOG_LEVEL_LOWER_ERROR_STR, LOG_LEVEL_ERROR_LEN, 1, fp);
+                    }
+                    break;
+
+                case 'L':
+                    if (level == LOG_LEVEL_INFO) {
+                        fwrite(LOG_LEVEL_UPPER_INFO_STR, LOG_LEVEL_INFO_LEN, 1, fp);
+                    } else {
+                        fwrite(LOG_LEVEL_UPPER_ERROR_STR, LOG_LEVEL_ERROR_LEN, 1, fp);
+                    }
+                    break;
+
+                default:
+                    fwrite(ptr - 2, 2, 1, fp);
+                    break;
+            }
+        } else {
+            ++ ptr;
         }
     }
 
-    fprintf(fp, "\"}\n");
+    fputc('\n', fp);
+
+    if (free_msg) {
+        free((char*)msg);
+    }
 }
 
-#ifndef NDEBUG
-    #define print_info(FMT, ...) (log_format == LOG_FORMAT_JSON ? \
-        print_log_json(stdout, LOG_LEVEL_INFO, __FILE__, __LINE__, FMT, ## __VA_ARGS__) : \
-        print_log_text(stdout, "%s %s:%d: " FMT "\n", log_info_prefix, __FILE__, __LINE__, ## __VA_ARGS__))
-
-    #define print_error(FMT, ...) (log_format == LOG_FORMAT_JSON ? \
-        print_log_json(stderr, LOG_LEVEL_ERROR, __FILE__, __LINE__, FMT, ## __VA_ARGS__) : \
-        print_log_text(stderr, "%s %s:%d: " FMT "\n", log_error_prefix, __FILE__, __LINE__, ## __VA_ARGS__))
-
-#else
-    #define print_info(FMT, ...) (log_format == LOG_FORMAT_JSON ? \
-        print_log_json(stdout, LOG_LEVEL_INFO, NULL, 0, FMT, ## __VA_ARGS__) : \
-        print_log_text(stdout, "%s" FMT "\n", log_info_prefix, ## __VA_ARGS__))
-
-    #define print_error(FMT, ...) (log_format == LOG_FORMAT_JSON ? \
-        print_log_json(stderr, LOG_LEVEL_ERROR, NULL, 0, FMT, ## __VA_ARGS__) : \
-        print_log_text(stderr, "%s" FMT "\n", log_error_prefix, ## __VA_ARGS__))
-#endif
+#define print_info(FMT, ...)  print_log_template(stdout, log_format, LOG_LEVEL_INFO,  __FILE__, __LINE__, FMT, ## __VA_ARGS__)
+#define print_error(FMT, ...) print_log_template(stdout, log_format, LOG_LEVEL_ERROR, __FILE__, __LINE__, FMT, ## __VA_ARGS__)
 
 static bool is_valid_name(const char *name) {
     if (!*name) {
@@ -841,26 +952,16 @@ int command_start(int argc, char *argv[]) {
 
                     case OPT_START_LOG_FORMAT:
                         if (strcasecmp(optarg, "text") == 0) {
-                            log_format = LOG_FORMAT_TEXT;
+                            log_format = LOG_TEMPLATE_TEXT;
                         } else if (strcasecmp(optarg, "json") == 0) {
-                            log_format = LOG_FORMAT_JSON;
+                            log_format = LOG_TEMPLATE_JSON;
+                        } else if (strncasecmp(optarg, "template:", strlen("template:")) == 0) {
+                            log_format = optarg + strlen("template:");
                         } else {
                             print_error("illegal value for --log-format: %s", optarg);
                             status = 1;
                             goto cleanup;
                         }
-                        break;
-
-                    case OPT_START_LOG_PREFIX:
-                        log_prefix = !*optarg ? NULL : optarg;
-                        break;
-
-                    case OPT_START_LOG_INFO_PREFIX:
-                        log_info_prefix = optarg;
-                        break;
-
-                    case OPT_START_LOG_ERROR_PREFIX:
-                        log_error_prefix = optarg;
                         break;
 
                     case OPT_START_RESTART:
@@ -1309,7 +1410,9 @@ int command_start(int argc, char *argv[]) {
     const bool do_pipe = do_logrotate || rlimit_fsize;
     const char *logfile_path;
 
-    {
+    // TODO: validate log_format
+
+    if (do_logrotate) {
         const time_t now = time(NULL);
         struct tm local_now;
         if (localtime_r(&now, &local_now) == NULL) {
@@ -1318,31 +1421,21 @@ int command_start(int argc, char *argv[]) {
             goto cleanup;
         }
 
-        if (log_prefix != NULL) {
-            if (strftime(logfile_path_buf, sizeof(logfile_path_buf), log_prefix, &local_now) == 0) {
-                print_error("cannot format log_prefix \"%s\": %s", log_prefix, strerror(errno));
-                status = 1;
-                goto cleanup;
-            }
+        if (strftime(logfile_path_buf, sizeof(logfile_path_buf), logfile, &local_now) == 0) {
+            print_error("cannot format logfile \"%s\": %s", logfile, strerror(errno));
+            status = 1;
+            goto cleanup;
         }
 
-        if (do_logrotate) {
-            if (strftime(logfile_path_buf, sizeof(logfile_path_buf), logfile, &local_now) == 0) {
-                print_error("cannot format logfile \"%s\": %s", logfile, strerror(errno));
-                status = 1;
-                goto cleanup;
-            }
-
-            if (!can_read_write(logfile_path_buf, selfuid, selfgid)) {
-                print_error("cannot read and write file: %s", logfile);
-                status = 1;
-                goto cleanup;
-            }
-
-            logfile_path = logfile_path_buf;
-        } else {
-            logfile_path = logfile;
+        if (!can_read_write(logfile_path_buf, selfuid, selfgid)) {
+            print_error("cannot read and write file: %s", logfile);
+            status = 1;
+            goto cleanup;
         }
+
+        logfile_path = logfile_path_buf;
+    } else {
+        logfile_path = logfile;
     }
 
     logfile_fd = open(logfile_path, O_CREAT | O_WRONLY | O_CLOEXEC | O_APPEND, 0644);

@@ -13,6 +13,13 @@ extern "C" {
 #define SERVICE_RUNNER_VERSION_MINOR 1
 #define SERVICE_RUNNER_VERSION_PATCH 1
 
+#ifdef NDEBUG
+    #define LOG_TEMPLATE_TEXT "[%t] service-runner: [%L] %s"
+    #define LOG_TEMPLATE_JSON "{\"level\":\"%l\",\"timestamp\":\"%T\",\"source\":\"service-runner\",\"message\":\"%j\"}"
+#else
+    #define LOG_TEMPLATE_TEXT "[%t] service-runner: [%L] %f:%n: %s"
+    #define LOG_TEMPLATE_JSON "{\"level\":\"%l\",\"timestamp\":\"%T\",\"source\":\"service-runner\",\"filename\":\"%F\",\"lineno\":%n,\"message\":\"%j\"}"
+#endif
 
 #ifdef __ILP32__
     #ifndef SYS_pidfd_open

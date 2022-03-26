@@ -43,14 +43,6 @@
     #define RLIMIT_STACK_STR
 #endif
 
-#ifdef NDEBUG
-    #define LOG_FORMAT_JSON_DEBUG_STR
-#else
-    #define LOG_FORMAT_JSON_DEBUG_STR \
-        "                                           \"filename\":  string,\n" \
-        "                                           \"lineno\":    number,\n"
-#endif
-
 #define HELP_OPT_PIDFILE \
         "       -p, --pidfile=FILE              Use FILE as the pidfile. default: /var/run/NAME.pid\n"
 
@@ -66,40 +58,64 @@
         "       -l, --logfile=FILE              Write service output to FILE. default: /var/log/NAME-%Y-%m-%d.log\n"            \
         "                                       This implements log-rotating based on the file name pattern. See `man strftime` for a description of the pattern language.\n" \
         "           --chown-logfile             Change owner of the logfile to user/group specified by --user/--group.\n"       \
-        "           --log-format=FORMAT         Either TEXT or JSON. default: TEXT\n"                                           \
-        "                                       JSON log-record structure is this, but in one line:\n"                          \
-        "                                       {\n"                                                                            \
-        "                                           \"level\":     \"info\" | \"error\",\n"                                     \
-        "                                           \"timestamp\": \"%Y-%m-%dT%H:%M:%S%z\",\n"                                  \
-        "                                           \"source\":    \"service-runner\",\n"                                       \
-        LOG_FORMAT_JSON_DEBUG_STR                                                                                               \
-        "                                           \"message\":   string\n"                                                    \
-        "                                       }\n"                                                                            \
-        "           --log-prefix=FORMAT         Prefix service-runner log messages with FORMAT. (Only for --log-format=TEXT) default: \"[%Y-%m-%d %H:%M:%S%z] service-runner: \"\n" \
-        "           --log-info-prefix=PREFIX    String inserted between --log-prefix and info level log message. (Only for --log-format=TEXT) default: \"[INFO] \"\n" \
-        "           --log-error-prefix=PREFIX   String inserted between --log-prefix and error level log message. (Only for --log-format=TEXT) default: \"[ERROR] \"\n" \
-        "           --restart=WHEN              Restart policy. Possible values for WHEN:\n"                                    \
-        "                                         NEVER ..... never restart (except when explicitely requesting restart using the restart command)\n" \
-        "                                         ALWAYS .... restart no matter if the service exited normally or with an error status.\n"            \
-        "                                         FAILURE ... (default) only restart the service if it exited with an error status or crashed.\n"     \
+        "           --log-format=FORMAT\n"                                                                                      \
+        "\n"                                                                                                                    \
+        "             Format of service-runner's own log messages.\n"                                                           \
+        "             FORMAT values:\n"                                                                                         \
+        "               text ................ '" LOG_TEMPLATE_TEXT "' (default)\n"                                              \
+        "               json ................ '" LOG_TEMPLATE_JSON "'\n"                                                        \
+        "               template:TEMPLATE ... Interpolate given TEMPLATE.\n"                                                    \
+        "\n"                                                                                                                    \
+        "             Template syntax:\n"                                                                                       \
+        "               %Y ... 4 digit year\n"                                                                                  \
+        "               %m ... 2 digit month\n"                                                                                 \
+        "               %d ... 2 digit day\n"                                                                                   \
+        "               %H ... 2 digit hour (24 hour clock)\n"                                                                  \
+        "               %M ... 2 digit minute\n"                                                                                \
+        "               %S ... 2 digit second\n"                                                                                \
+        "               %z ... time zone offset\n"                                                                              \
+        "               %s ... log message\n"                                                                                   \
+        "               %j ... JSON encoded log message (no enclosing quotes)\n"                                                \
+        "               %f ... source filename\n"                                                                               \
+        "               %F ... JSON encoded filename (no enclosing quotes)\n"                                                   \
+        "               %n ... line number\n"                                                                                   \
+        "               %l ... \"info\" or \"error\"\n"                                                                         \
+        "               %L ... \"INFO\" or \"ERROR\"\n"                                                                         \
+        "               %t ... equivalent to '%Y-%m-%d %H:%M:%S%z'\n"                                                           \
+        "               %T ... equivalent to '%Y-%m-%dT%H:%M:%S%z'\n"                                                           \
+        "               %% ... outputs %\n"                                                                                     \
+        "\n"                                                                                                                    \
+        "           --restart=WHEN\n"                                                                                           \
+        "\n"                                                                                                                    \
+        "             Restart policy. Possible values for WHEN:\n"                                                              \
+        "               NEVER ..... never restart (except when explicitely requesting restart using the restart command)\n"     \
+        "               ALWAYS .... restart no matter if the service exited normally or with an error status.\n"                \
+        "               FAILURE ... (default) only restart the service if it exited with an error status or crashed.\n"         \
+        "\n"                                                                                                                    \
         "       -u, --user=USER                 Run service as USER (name or UID).\n"                                           \
         "       -g, --group=GROUP               Run service as GROUP (name or GID).\n"                                          \
         "       -N, --priority=PRIORITY         Run service and service-runner(!) under process scheduling priority PRIORITY. From -20 (maximum priority) to +19 (minimum priority).\n" \
-        "       -r, --rlimit=RES:SOFT[:HARD]    Run service with given resource limits. This option can be defined multiple times. SOFT/HARD may be an integer or \"INFINITY\". RES may be an integer or one of these names: " \
-                                                "AS, CORE, CPU, DATA, FSIZE, LOCKS, MEMLOCK, MSGQUEUE" RLIMIT_NICE_STR          \
-                                                ", NOFILE, NPROC, RSS" RLIMIT_RTPRIO_STR RLIMIT_RTTIME_STR                      \
-                                                RLIMIT_SIGPENDING_STR RLIMIT_STACK_STR "\n"                                     \
-        "                                       Note that it is not checked if calling setrlimit() in the child process will succeed before forking the child. This means if it doesn't succeed there will be a crash-restart-loop.\n" \
-        "                                       See: man setrlimit\n"                                                           \
+        "       -r, --rlimit=RES:SOFT[:HARD]\n"                                                                                 \
+        "\n"                                                                                                                    \
+        "             Run service with given resource limits. This option can be defined multiple times. SOFT/HARD may be an integer or \"INFINITY\". RES may be an integer or one of these names: " \
+                      "AS, CORE, CPU, DATA, FSIZE, LOCKS, MEMLOCK, MSGQUEUE" RLIMIT_NICE_STR                                    \
+                      ", NOFILE, NPROC, RSS" RLIMIT_RTPRIO_STR RLIMIT_RTTIME_STR                                                \
+                      RLIMIT_SIGPENDING_STR RLIMIT_STACK_STR "\n"                                                               \
+        "\n"                                                                                                                    \
+        "             Note that it is not checked if calling setrlimit() in the child process will succeed before forking the child. This means if it doesn't succeed there will be a crash-restart-loop.\n" \
+        "             See: man setrlimit\n"                                                                                     \
+        "\n"                                                                                                                    \
         "       -k, --umask=UMASK               Run service with umask UMASK. Octal values only.\n"                             \
         "       -C, --chdir=PATH                Change to directory PATH before running the service. When --chroot is used chdir happens after chroot. The service binary path is relative to this PATH, even without \"./\" prefix.\n" \
         "           --chroot=PATH               Call chroot with PATH before running the service (and before calling chdir, if given). Unless --chdir is also given the service binary path is relative to this PATH, even without \"./\" prefix.\n" \
         "           --restart-sleep=SECONDS     Wait SECONDS before restarting service. default: 1\n"                           \
-        "           --crash-report=COMMAND      Run `COMMAND NAME CODE STATUS LOGFILE` if the service crashed.\n"               \
-        "                                       CODE values:\n"                                                                 \
-        "                                         EXITED ... service has exited, STATUS is it's exit status\n"                  \
-        "                                         KILLED ... service was killed, STATUS is the killing signal\n"                \
-        "                                         DUMPED ... service core dumped, STATUS is the killing signal\n"
+        "           --crash-report=COMMAND\n"                                                                                   \
+        "\n"                                                                                                                    \
+        "             Run `COMMAND NAME CODE STATUS LOGFILE` if the service crashed.\n"                                         \
+        "             CODE values:\n"                                                                                           \
+        "               EXITED ... service has exited, STATUS is it's exit status\n"                                            \
+        "               KILLED ... service was killed, STATUS is the killing signal\n"                                          \
+        "               DUMPED ... service core dumped, STATUS is the killing signal\n"
 
 #define HELP_CMD_STOP_HDR                                                                                           \
         "   %s stop <name> [options]\n"
