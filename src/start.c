@@ -42,24 +42,6 @@
 #define PIPE_WRITE 1
 #define SPLICE_SZIE ((size_t)2 * 1024 * 1024 * 1024)
 
-// %Y ... 4 digit year
-// %m ... 2 digit month
-// %d ... 2 digit day
-// %H ... 2 digit hour (24 hour clock)
-// %M ... 2 digit minute
-// %S ... 2 digit second
-// %z ... time zone offset
-// %s ... log message
-// %j ... JSON encoded log message (no enclosing quotes)
-// %f ... source filename
-// %F ... JSON encoded filename (no enclosing quotes)
-// %n ... line number
-// %l ... "info" or "error"
-// %L ... "INFO" or "ERROR"
-// %t ... %Y-%m-%d %H:%M:%S%z
-// %T ... %Y-%m-%dT%H:%M:%S%z
-// %% ... %
-
 #define LOG_LEVEL_UPPER_INFO_STR  "INFO"
 #define LOG_LEVEL_UPPER_ERROR_STR "ERROR"
 
@@ -354,6 +336,248 @@ static void print_json_string(FILE *fp, const char *str) {
     }
 }
 
+static void print_xml_string(FILE *fp, const char *str) {
+    const char *prev = str;
+    for (const char *ptr = str;;) {
+        char ch = *ptr;
+        switch (ch) {
+        case 0:
+            fwrite(prev, ptr - prev, 1, fp);
+            return;
+
+        case '&':
+            fwrite(prev, ptr - prev, 1, fp);
+            fwrite("&amp;", 5, 1, fp);
+            prev = ++ ptr;
+            break;
+
+        case '"':
+            fwrite(prev, ptr - prev, 1, fp);
+            fwrite("&quot;", 6, 1, fp);
+            prev = ++ ptr;
+            break;
+
+        case '\'':
+            fwrite(prev, ptr - prev, 1, fp);
+            fwrite("&#39;", 5, 1, fp);
+            prev = ++ ptr;
+            break;
+
+        case '<':
+            fwrite(prev, ptr - prev, 1, fp);
+            fwrite("&lt;", 4, 1, fp);
+            prev = ++ ptr;
+            break;
+
+        case '>':
+            fwrite(prev, ptr - prev, 1, fp);
+            fwrite("&gt;", 4, 1, fp);
+            prev = ++ ptr;
+            break;
+
+        case '\r':
+            fwrite(prev, ptr - prev, 1, fp);
+            fwrite("&#13;", 5, 1, fp);
+            prev = ++ ptr;
+            break;
+
+        case '\n':
+            fwrite(prev, ptr - prev, 1, fp);
+            fwrite("&#10;", 5, 1, fp);
+            prev = ++ ptr;
+            break;
+
+        default:
+            ++ ptr;
+            break;
+        }
+    }
+}
+
+static void print_sql_string(FILE *fp, const char *str) {
+    const char *prev = str;
+    for (const char *ptr = str;;) {
+        char ch = *ptr;
+        switch (ch) {
+        case 0:
+            fwrite(prev, ptr - prev, 1, fp);
+            return;
+
+        case '\'':
+            fwrite(prev, ptr - prev, 1, fp);
+            fwrite("''", 2, 1, fp);
+            prev = ++ ptr;
+            break;
+
+        default:
+            ++ ptr;
+            break;
+        }
+    }
+}
+
+static void print_csv_string(FILE *fp, const char *str) {
+    const char *prev = str;
+    for (const char *ptr = str;;) {
+        char ch = *ptr;
+        switch (ch) {
+        case 0:
+            fwrite(prev, ptr - prev, 1, fp);
+            return;
+
+        case '"':
+            fwrite(prev, ptr - prev, 1, fp);
+            fwrite("\"\"", 2, 1, fp);
+            prev = ++ ptr;
+            break;
+
+        default:
+            ++ ptr;
+            break;
+        }
+    }
+}
+
+static bool is_valid_log_template(const char *template) {
+    bool ok = false;
+    for (const char *ptr = template; *ptr; ++ ptr) {
+        char ch = *ptr;
+        if (ch == '%') {
+            ch = * ++ ptr;
+            switch (ch) {
+                case 's':
+                    ok = true;
+                    break;
+
+                case 'j':
+                case 'x':
+                case 'q':
+                case 'c':
+                    ch = * ++ ptr;
+                    switch (ch) {
+                        case 's':
+                            ok = true;
+                            break;
+
+                        case 'f':
+                        case 'l':
+                        case 'L':
+                            break;
+
+                        default:
+                            return false;
+                    }
+                    break;
+
+                case 'g':
+                    ch = * ++ ptr;
+                    switch (ch) {
+                        case 'Y':
+                        case 'm':
+                        case 'd':
+                        case 'H':
+                        case 'M':
+                        case 'S':
+                        case 't':
+                        case 'T':
+                        case 'a':
+                        case 'b':
+                            break;
+
+                        default:
+                            return false;
+                    }
+                    break;
+
+                case 'Y':
+                case 'm':
+                case 'd':
+                case 'H':
+                case 'M':
+                case 'S':
+                case 'z':
+                case 't':
+                case 'T':
+                case 'f':
+                case 'n':
+                case 'l':
+                case 'L':
+                case 'h':
+                case 'a':
+                case 'b':
+                case '%':
+                    break;
+
+                default:
+                    return false;
+            }
+        }
+    }
+
+    return ok;
+}
+
+static const char *wdays[] = {
+    "Sun",
+    "Mon",
+    "Tue",
+    "Wed",
+    "Thu",
+    "Fri",
+    "Sat",
+};
+
+static const char *months[] = {
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+};
+
+#define FORMAT_ARG(FMT, PRINT)                  \
+    ch = *ptr;                                  \
+    if (ch == 0) {                              \
+        fwrite(FMT, 2, 1, fp);                  \
+        break;                                  \
+    }                                           \
+    switch (ch) {                               \
+        case 's':                               \
+            PRINT(fp, msg);                     \
+            prev = ++ ptr;                      \
+            break;                              \
+                                                \
+        case 'f':                               \
+            PRINT(fp, filename);                \
+            prev = ++ ptr;                      \
+            break;                              \
+                                                \
+        case 'l':                               \
+            PRINT(fp, level == LOG_LEVEL_INFO ? \
+                LOG_LEVEL_LOWER_INFO_STR :      \
+                LOG_LEVEL_LOWER_ERROR_STR);     \
+            prev = ++ ptr;                      \
+            break;                              \
+                                                \
+        case 'L':                               \
+            PRINT(fp, level == LOG_LEVEL_INFO ? \
+                LOG_LEVEL_UPPER_INFO_STR :      \
+                LOG_LEVEL_UPPER_ERROR_STR);     \
+            prev = ++ ptr;                      \
+            break;                              \
+                                                \
+        default:                                \
+            fwrite(FMT, 2, 1, fp);              \
+            break;                              \
+    }
+
 __attribute__((format(printf, 6, 7))) static void print_log_template(FILE *fp, const char *template, enum LogLevel level, const char *filename, size_t lineno, const char *fmt, ...) {
     char buf[4096];
     const char *msg = buf;
@@ -403,10 +627,10 @@ __attribute__((format(printf, 6, 7))) static void print_log_template(FILE *fp, c
     int tzoff = local_now.tm_gmtoff / 60;
     char tzsign;
     if (tzoff < 0) {
-        tzsign = '+';
+        tzsign = '-';
         tzoff  = -tzoff;
     } else {
-        tzsign = '-';
+        tzsign = '+';
     }
     int tzhour = tzoff / 60;
     int tzmin  = tzoff % 60;
@@ -429,7 +653,7 @@ __attribute__((format(printf, 6, 7))) static void print_log_template(FILE *fp, c
             prev = ++ ptr;
             switch (ch) {
                 case 'Y':
-                    fprintf(fp, "%04d", local_now.tm_year);
+                    fprintf(fp, "%04d", local_now.tm_year + 1900);
                     break;
 
                 case 'm':
@@ -458,7 +682,7 @@ __attribute__((format(printf, 6, 7))) static void print_log_template(FILE *fp, c
 
                 case 't':
                     fprintf(fp, "%04d-%02d-%02d %02d:%02d:%02d%c%02d%02d",
-                        local_now.tm_year,
+                        local_now.tm_year + 1900,
                         local_now.tm_mon + 1,
                         local_now.tm_mday,
                         local_now.tm_hour,
@@ -472,7 +696,7 @@ __attribute__((format(printf, 6, 7))) static void print_log_template(FILE *fp, c
 
                 case 'T':
                     fprintf(fp, "%04d-%02d-%02dT%02d:%02d:%02d%c%02d%02d",
-                        local_now.tm_year,
+                        local_now.tm_year + 1900,
                         local_now.tm_mon + 1,
                         local_now.tm_mday,
                         local_now.tm_hour,
@@ -489,15 +713,23 @@ __attribute__((format(printf, 6, 7))) static void print_log_template(FILE *fp, c
                     break;
 
                 case 'j':
-                    print_json_string(fp, msg);
+                    FORMAT_ARG("%j", print_json_string);
+                    break;
+
+                case 'x':
+                    FORMAT_ARG("%x", print_xml_string);
+                    break;
+
+                case 'q':
+                    FORMAT_ARG("%q", print_sql_string);
+                    break;
+
+                case 'c':
+                    FORMAT_ARG("%c", print_csv_string);
                     break;
 
                 case 'f':
                     fwrite(filename, strlen(filename), 1, fp);
-                    break;
-
-                case 'F':
-                    print_json_string(fp, filename);
                     break;
 
                 case 'n':
@@ -518,6 +750,145 @@ __attribute__((format(printf, 6, 7))) static void print_log_template(FILE *fp, c
                     } else {
                         fwrite(LOG_LEVEL_UPPER_ERROR_STR, LOG_LEVEL_ERROR_LEN, 1, fp);
                     }
+                    break;
+
+                case 'h':
+                {
+                    struct tm gm_now = {
+                        .tm_year   = 0,
+                        .tm_mon    = 0,
+                        .tm_mday   = 0,
+                        .tm_wday   = 0,
+                        .tm_hour   = 0,
+                        .tm_min    = 0,
+                        .tm_sec    = 0,
+                        .tm_isdst  = 0,
+                        .tm_gmtoff = 0,
+                        .tm_zone   = NULL,
+                    };
+                    struct tm *tmptr = gmtime_r(&now, &gm_now);
+                    assert(tmptr != NULL); (void)tmptr;
+                    fprintf(fp, "%s, %02d %s %04d %02d:%02d:%02d GMT",
+                        wdays[gm_now.tm_wday],
+                        gm_now.tm_mday,
+                        months[gm_now.tm_mon],
+                        gm_now.tm_year + 1900,
+                        gm_now.tm_hour,
+                        gm_now.tm_min,
+                        gm_now.tm_sec
+                    );
+                    break;
+                }
+                case 'g':
+                {
+                    struct tm gm_now = {
+                        .tm_year   = 0,
+                        .tm_mon    = 0,
+                        .tm_mday   = 0,
+                        .tm_wday   = 0,
+                        .tm_hour   = 0,
+                        .tm_min    = 0,
+                        .tm_sec    = 0,
+                        .tm_isdst  = 0,
+                        .tm_gmtoff = 0,
+                        .tm_zone   = NULL,
+                    };
+                    ch = *ptr;
+                    if (ch == 0) {
+                        fwrite("%g", 2, 1, fp);
+                        break;
+                    }
+                    struct tm *tmptr = gmtime_r(&now, &gm_now);
+                    assert(tmptr != NULL); (void)tmptr;
+                    switch (ch) {
+                        case 'Y':
+                            fprintf(fp, "%04d", gm_now.tm_year + 1900);
+                            prev = ++ ptr;
+                            break;
+
+                        case 'm':
+                            fprintf(fp, "%02d", gm_now.tm_mon + 1);
+                            prev = ++ ptr;
+                            break;
+
+                        case 'd':
+                            fprintf(fp, "%02d", gm_now.tm_mday);
+                            prev = ++ ptr;
+                            break;
+
+                        case 'H':
+                            fprintf(fp, "%02d", gm_now.tm_hour);
+                            prev = ++ ptr;
+                            break;
+
+                        case 'M':
+                            fprintf(fp, "%02d", gm_now.tm_min);
+                            prev = ++ ptr;
+                            break;
+
+                        case 'S':
+                            fprintf(fp, "%02d", gm_now.tm_sec);
+                            prev = ++ ptr;
+                            break;
+
+                        case 't':
+                            fprintf(fp, "%04d-%02d-%02d %02d:%02d:%02dZ",
+                                gm_now.tm_year + 1900,
+                                gm_now.tm_mon + 1,
+                                gm_now.tm_mday,
+                                gm_now.tm_hour,
+                                gm_now.tm_min,
+                                gm_now.tm_sec
+                            );
+                            prev = ++ ptr;
+                            break;
+
+                        case 'T':
+                            fprintf(fp, "%04d-%02d-%02dT%02d:%02d:%02dZ",
+                                gm_now.tm_year + 1900,
+                                gm_now.tm_mon + 1,
+                                gm_now.tm_mday,
+                                gm_now.tm_hour,
+                                gm_now.tm_min,
+                                gm_now.tm_sec
+                            );
+                            prev = ++ ptr;
+                            break;
+
+                        case 'a':
+                        {
+                            const char *mon = months[gm_now.tm_mon];
+                            fwrite(mon, strlen(mon), 1, fp);
+                            prev = ++ ptr;
+                            break;
+                        }
+                        case 'b':
+                        {
+                            const char *wday = wdays[gm_now.tm_wday];
+                            fwrite(wday, strlen(wday), 1, fp);
+                            prev = ++ ptr;
+                            break;
+                        }
+                        default:
+                            fwrite("%g", 2, 1, fp);
+                            break;
+                    }
+                    break;
+                }
+                case 'a':
+                {
+                    const char *mon = months[local_now.tm_mon];
+                    fwrite(mon, strlen(mon), 1, fp);
+                    break;
+                }
+                case 'b':
+                {
+                    const char *wday = wdays[local_now.tm_wday];
+                    fwrite(wday, strlen(wday), 1, fp);
+                    break;
+                }
+                case '%':
+                    fputc('%', fp);
                     break;
 
                 default:
@@ -898,6 +1269,17 @@ int command_start(int argc, char *argv[]) {
         return 1;
     }
 
+    // Also set stderr to be line buffered so that concurrent writes
+    // between the service-runner process and the service itself have
+    // a smaller chance to interfere.
+    // This is ok since log messages as written here are always single
+    // and whole lines (assuming stderr(errno) never returns a
+    // multiline string).
+    if (setvbuf(stderr, NULL, _IOLBF, 0) != 0) {
+        perror("*** error: setvbuf(stderr, NULL, _IOLBF, 0)");
+        return 1;
+    }
+
     int longind = 0;
 
     const char *pidfile = NULL;
@@ -955,8 +1337,20 @@ int command_start(int argc, char *argv[]) {
                             log_format = LOG_TEMPLATE_TEXT;
                         } else if (strcasecmp(optarg, "json") == 0) {
                             log_format = LOG_TEMPLATE_JSON;
+                        } else if (strcasecmp(optarg, "xml") == 0) {
+                            log_format = LOG_TEMPLATE_XML;
+                        } else if (strcasecmp(optarg, "sql") == 0) {
+                            log_format = LOG_TEMPLATE_SQL;
+                        } else if (strcasecmp(optarg, "csv") == 0) {
+                            log_format = LOG_TEMPLATE_CSV;
                         } else if (strncasecmp(optarg, "template:", strlen("template:")) == 0) {
-                            log_format = optarg + strlen("template:");
+                            const char *template = optarg + strlen("template:");
+                            if (!is_valid_log_template(template)) {
+                                print_error("illegal value for --log-format: %s", optarg);
+                                status = 1;
+                                goto cleanup;
+                            }
+                            log_format = template;
                         } else {
                             print_error("illegal value for --log-format: %s", optarg);
                             status = 1;

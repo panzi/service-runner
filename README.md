@@ -58,31 +58,53 @@ COMMANDS:
            --chown-logfile             Change owner of the logfile to user/group 
                                        specified by --user/--group.
            --log-format=FORMAT
-             
+
              Format of service-runner's own log messages.
              FORMAT values:
-               text ................ '[%t] service-runner: %f:%n: [%L] %s' (default)
-               json ................ '{"level":"%l","timestamp":"%T","source":"service-runner","message":"%j"}'
+               text ................ '[%t] service-runner: [%L] %s' (default)
+               json ................ '{"level":"%l","timestamp":"%T","source":"service-runner","message":"%js"}'
+               xml ................. '<log level="%l" timestamp="%T" source="service-runner">%xs</log>'
+               sql ................. "INSERT INTO logs (level, timestamp, source, message) VALUES ('%l', '%T', 'service-runner', '%qs');"
+               csv ................. '"%l","%T","service-runner","%cs"\r'
                template:TEMPLATE ... Interpolate given TEMPLATE.
 
              Template syntax:
-               %Y ... 4 digit year
-               %m ... 2 digit month
-               %d ... 2 digit day
-               %H ... 2 digit hour (24 hour clock)
-               %M ... 2 digit minute
-               %S ... 2 digit second
-               %z ... time zone offset
-               %s ... log message
-               %j ... JSON encoded log message (no enclosing quotes)
-               %f ... source filename
-               %F ... JSON encoded filename (no enclosing quotes)
-               %n ... line number
-               %l ... "info" or "error"
-               %L ... "INFO" or "ERROR"
-               %t ... equivalent to '%Y-%m-%d %H:%M:%S%z'
-               %T ... equivalent to '%Y-%m-%dT%H:%M:%S%z'
-               %% ... outputs %
+               %Y .... local time 4 digit year
+               %m .... local time 2 digit month
+               %d .... local time 2 digit day in month
+               %H .... local time 2 digit hour (24 hour clock)
+               %M .... local time 2 digit minute
+               %S .... local time 2 digit second
+               %a .... local time abbreviated day in the week name
+               %b .... local time abbreviated month name
+               %z .... local time zone offset
+               %gY ... GMT 4 digit year
+               %gm ... GMT 2 digit month
+               %gd ... GMT 2 digit day in month
+               %gH ... GMT 2 digit hour (24 hour clock)
+               %gM ... GMT 2 digit minute
+               %gS ... GMT 2 digit second
+               %ga ... GMT abbreviated day in the week name
+               %gb ... GMT abbreviated month name
+               %s .... log message
+               %js ... JSON encoded log message (no enclosing quotes)
+               %xs ... XML encoded log message
+               %qs ... SQL encoded log message (no enclosing quotes)
+               %cs ... CSV encoded log message (no enclosing quotes)
+               %f .... source filename
+               %jf ... JSON encoded filename (no enclosing quotes)
+               %xf ... XML encoded filename
+               %qf ... SQL encoded filename (no enclosing quotes)
+               %cf ... CSV encoded filename (no enclosing quotes)
+               %n .... line number
+               %l .... "info" or "error"
+               %L .... "INFO" or "ERROR"
+               %t .... equivalent to '%Y-%m-%d %H:%M:%S%z'
+               %T .... equivalent to '%Y-%m-%dT%H:%M:%S%z'
+               %gt ... equivalent to '%gY-%gm-%gd %gH:%gM:%gSZ'
+               %gT ... equivalent to '%gY-%gm-%gdT%gH:%gM:%gSZ'
+               %h .... RFC 7231 IMF-fixdate: '%ga, %gd %gb %gY %gH:%gM:%gS GMT'
+               %% .... outputs %
 
            --restart=WHEN
 

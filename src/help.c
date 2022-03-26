@@ -64,26 +64,48 @@
         "             FORMAT values:\n"                                                                                         \
         "               text ................ '" LOG_TEMPLATE_TEXT "' (default)\n"                                              \
         "               json ................ '" LOG_TEMPLATE_JSON "'\n"                                                        \
+        "               xml ................. '" LOG_TEMPLATE_XML "'\n"                                                         \
+        "               sql ................. \"" LOG_TEMPLATE_SQL "\"\n"                                                       \
+        "               csv ................. '" LOG_TEMPLATE_CSV_HELP "'\n"                                                    \
         "               template:TEMPLATE ... Interpolate given TEMPLATE.\n"                                                    \
         "\n"                                                                                                                    \
         "             Template syntax:\n"                                                                                       \
-        "               %Y ... 4 digit year\n"                                                                                  \
-        "               %m ... 2 digit month\n"                                                                                 \
-        "               %d ... 2 digit day\n"                                                                                   \
-        "               %H ... 2 digit hour (24 hour clock)\n"                                                                  \
-        "               %M ... 2 digit minute\n"                                                                                \
-        "               %S ... 2 digit second\n"                                                                                \
-        "               %z ... time zone offset\n"                                                                              \
-        "               %s ... log message\n"                                                                                   \
-        "               %j ... JSON encoded log message (no enclosing quotes)\n"                                                \
-        "               %f ... source filename\n"                                                                               \
-        "               %F ... JSON encoded filename (no enclosing quotes)\n"                                                   \
-        "               %n ... line number\n"                                                                                   \
-        "               %l ... \"info\" or \"error\"\n"                                                                         \
-        "               %L ... \"INFO\" or \"ERROR\"\n"                                                                         \
-        "               %t ... equivalent to '%Y-%m-%d %H:%M:%S%z'\n"                                                           \
-        "               %T ... equivalent to '%Y-%m-%dT%H:%M:%S%z'\n"                                                           \
-        "               %% ... outputs %\n"                                                                                     \
+        "               %Y .... local time 4 digit year\n"                                                                      \
+        "               %m .... local time 2 digit month\n"                                                                     \
+        "               %d .... local time 2 digit day in month\n"                                                              \
+        "               %H .... local time 2 digit hour (24 hour clock)\n"                                                      \
+        "               %M .... local time 2 digit minute\n"                                                                    \
+        "               %S .... local time 2 digit second\n"                                                                    \
+        "               %a .... local time abbreviated day in the week name\n"                                                  \
+        "               %b .... local time abbreviated month name\n"                                                            \
+        "               %z .... local time zone offset\n"                                                                       \
+        "               %gY ... GMT 4 digit year\n"                                                                             \
+        "               %gm ... GMT 2 digit month\n"                                                                            \
+        "               %gd ... GMT 2 digit day in month\n"                                                                     \
+        "               %gH ... GMT 2 digit hour (24 hour clock)\n"                                                             \
+        "               %gM ... GMT 2 digit minute\n"                                                                           \
+        "               %gS ... GMT 2 digit second\n"                                                                           \
+        "               %ga ... GMT abbreviated day in the week name\n"                                                         \
+        "               %gb ... GMT abbreviated month name\n"                                                                   \
+        "               %s .... log message\n"                                                                                  \
+        "               %js ... JSON encoded log message (no enclosing quotes)\n"                                               \
+        "               %xs ... XML encoded log message\n"                                                                      \
+        "               %qs ... SQL encoded log message (no enclosing quotes)\n"                                                \
+        "               %cs ... CSV encoded log message (no enclosing quotes)\n"                                                \
+        "               %f .... source filename\n"                                                                              \
+        "               %jf ... JSON encoded filename (no enclosing quotes)\n"                                                  \
+        "               %xf ... XML encoded filename\n"                                                                         \
+        "               %qf ... SQL encoded filename (no enclosing quotes)\n"                                                   \
+        "               %cf ... CSV encoded filename (no enclosing quotes)\n"                                                   \
+        "               %n .... line number\n"                                                                                  \
+        "               %l .... \"info\" or \"error\"\n"                                                                        \
+        "               %L .... \"INFO\" or \"ERROR\"\n"                                                                        \
+        "               %t .... equivalent to '%Y-%m-%d %H:%M:%S%z'\n"                                                          \
+        "               %T .... equivalent to '%Y-%m-%dT%H:%M:%S%z'\n"                                                          \
+        "               %gt ... equivalent to '%gY-%gm-%gd %gH:%gM:%gSZ'\n"                                                                   \
+        "               %gT ... equivalent to '%gY-%gm-%gdT%gH:%gM:%gSZ'\n"                                                                   \
+        "               %h .... RFC 7231 IMF-fixdate: '%ga, %gd %gb %gY %gH:%gM:%gS GMT'\n"                                     \
+        "               %% .... outputs %\n"                                                                                    \
         "\n"                                                                                                                    \
         "           --restart=WHEN\n"                                                                                           \
         "\n"                                                                                                                    \

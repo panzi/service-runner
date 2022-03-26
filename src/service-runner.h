@@ -15,11 +15,20 @@ extern "C" {
 
 #ifdef NDEBUG
     #define LOG_TEMPLATE_TEXT "[%t] service-runner: [%L] %s"
-    #define LOG_TEMPLATE_JSON "{\"level\":\"%l\",\"timestamp\":\"%T\",\"source\":\"service-runner\",\"message\":\"%j\"}"
+    #define LOG_TEMPLATE_JSON "{\"level\":\"%l\",\"timestamp\":\"%T\",\"source\":\"service-runner\",\"message\":\"%js\"}"
+    #define LOG_TEMPLATE_XML  "<log level=\"%l\" timestamp=\"%T\" source=\"service-runner\">%xs</log>"
+    #define LOG_TEMPLATE_SQL  "INSERT INTO logs (level, timestamp, source, message) VALUES ('%l', '%T', 'service-runner', '%qs');"
+    #define LOG_TEMPLATE_CSV_ "\"%l\",\"%T\",\"service-runner\",\"%cs\""
 #else
     #define LOG_TEMPLATE_TEXT "[%t] service-runner: [%L] %f:%n: %s"
-    #define LOG_TEMPLATE_JSON "{\"level\":\"%l\",\"timestamp\":\"%T\",\"source\":\"service-runner\",\"filename\":\"%F\",\"lineno\":%n,\"message\":\"%j\"}"
+    #define LOG_TEMPLATE_JSON "{\"level\":\"%l\",\"timestamp\":\"%T\",\"source\":\"service-runner\",\"filename\":\"%jf\",\"lineno\":%n,\"message\":\"%js\"}"
+    #define LOG_TEMPLATE_XML  "<log level=\"%l\" timestamp=\"%T\" source=\"service-runner\" filename=\"%xf\" lineno=\"%n\">%xs</log>"
+    #define LOG_TEMPLATE_SQL  "INSERT INTO logs (level, timestamp, source, filename, lineno, message) VALUES ('%l', '%T', 'service-runner', '%qf', %n, '%qs');"
+    #define LOG_TEMPLATE_CSV_ "\"%l\",\"%T\",\"service-runner\",\"%cs\",\"%cf\",%n"
 #endif
+
+#define LOG_TEMPLATE_CSV LOG_TEMPLATE_CSV_ "\r"
+#define LOG_TEMPLATE_CSV_HELP LOG_TEMPLATE_CSV_ "\\r"
 
 #ifdef __ILP32__
     #ifndef SYS_pidfd_open
