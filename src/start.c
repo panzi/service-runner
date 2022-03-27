@@ -584,7 +584,7 @@ __attribute__((format(printf, 6, 7))) static void print_log_template(FILE *fp, c
     bool free_msg = false;
     const time_t now = time(NULL);
     struct tm local_now = {
-        .tm_year   = 0,
+        .tm_year   = -1900,
         .tm_mon    = 0,
         .tm_mday   = 0,
         .tm_wday   = 0,
@@ -755,7 +755,7 @@ __attribute__((format(printf, 6, 7))) static void print_log_template(FILE *fp, c
                 case 'h':
                 {
                     struct tm gm_now = {
-                        .tm_year   = 0,
+                        .tm_year   = -1900,
                         .tm_mon    = 0,
                         .tm_mday   = 0,
                         .tm_wday   = 0,
@@ -782,7 +782,7 @@ __attribute__((format(printf, 6, 7))) static void print_log_template(FILE *fp, c
                 case 'g':
                 {
                     struct tm gm_now = {
-                        .tm_year   = 0,
+                        .tm_year   = -1900,
                         .tm_mon    = 0,
                         .tm_mday   = 0,
                         .tm_wday   = 0,
