@@ -1346,13 +1346,13 @@ int command_start(int argc, char *argv[]) {
                         } else if (strncasecmp(optarg, "template:", strlen("template:")) == 0) {
                             const char *template = optarg + strlen("template:");
                             if (!is_valid_log_template(template)) {
-                                print_error("illegal value for --log-format: %s", optarg);
+                                fprintf(stderr, "*** error: illegal value for --log-format: %s\n", optarg);
                                 status = 1;
                                 goto cleanup;
                             }
                             log_format = template;
                         } else {
-                            print_error("illegal value for --log-format: %s", optarg);
+                            fprintf(stderr, "*** error: illegal value for --log-format: %s\n", optarg);
                             status = 1;
                             goto cleanup;
                         }
@@ -1366,7 +1366,7 @@ int command_start(int argc, char *argv[]) {
                         } else if (strcasecmp("FAILURE", optarg) == 0) {
                             restart = RESTART_FAILURE;
                         } else {
-                            print_error("illegal value for --restart: %s", optarg);
+                            fprintf(stderr, "*** error: illegal value for --restart: %s\n", optarg);
                             status = 1;
                             goto cleanup;
                         }
@@ -1375,7 +1375,7 @@ int command_start(int argc, char *argv[]) {
                     case OPT_START_CHROOT:
                     {
                         if (!*optarg) {
-                            print_error("--chroot cannot be empty string");
+                            fprintf(stderr, "*** error: --chroot cannot be an empty string\n");
                             status = 1;
                             goto cleanup;
                         }
@@ -1383,7 +1383,7 @@ int command_start(int argc, char *argv[]) {
                         free(chroot_path);
                         chroot_path = abspath(optarg);
                         if (chroot_path == NULL) {
-                            print_error("getting absolute path of --chroot=%s: %s", optarg, strerror(errno));
+                            fprintf(stderr, "*** error: getting absolute path of --chroot=%s: %s\n", optarg, strerror(errno));
                             status = 1;
                             goto cleanup;
                         }
@@ -1399,7 +1399,7 @@ int command_start(int argc, char *argv[]) {
                         char *endptr = NULL;
                         unsigned long value = strtoul(optarg, &endptr, 10);
                         if (!*optarg || *endptr || value > UINT_MAX) {
-                            print_error("illegal value for --restart-sleep: %s", optarg);
+                            fprintf(stderr, "*** error: illegal value for --restart-sleep: %s\n", optarg);
                             status = 1;
                             goto cleanup;
                         }
@@ -1433,7 +1433,7 @@ int command_start(int argc, char *argv[]) {
                 char *endptr = NULL;
                 long value = strtol(optarg, &endptr, 10);
                 if (!*optarg || *endptr || value > 19 || value < -20) {
-                    print_error("illegal value for --priority: %s", optarg);
+                    fprintf(stderr, "*** error: illegal value for --priority: %s\n", optarg);
                     status = 1;
                     goto cleanup;
                 }
@@ -1447,7 +1447,7 @@ int command_start(int argc, char *argv[]) {
                 char *endptr = NULL;
                 unsigned long value = strtoul(optarg, &endptr, 8);
                 if (!*optarg || *endptr || value > 0777) {
-                    print_error("illegal value for --umask: %s", optarg);
+                    fprintf(stderr, "*** error: illegal value for --umask: %s\n", optarg);
                     status = 1;
                     goto cleanup;
                 }
@@ -1462,14 +1462,14 @@ int command_start(int argc, char *argv[]) {
                     // Currently there are only 16 different rlimit values anyway.
                     if (SIZE_MAX - (RLIMITS_GROW * sizeof(struct rlimit_params)) < rlimits_capacity * sizeof(struct rlimit_params)) {
                         errno = ENOMEM;
-                        print_error("cannot allocate memory for --rlimit: %s", optarg);
+                        fprintf(stderr, "*** error: cannot allocate memory for --rlimit: %s\n", optarg);
                         status = 1;
                         goto cleanup;
                     }
                     size_t new_capacity = rlimits_capacity + RLIMITS_GROW;
                     struct rlimit_params *new_rlimits = realloc(rlimits, new_capacity * sizeof(struct rlimit_params));
                     if (new_rlimits == NULL) {
-                        print_error("cannot allocate memory for --rlimit: %s", optarg);
+                        fprintf(stderr, "*** error: cannot allocate memory for --rlimit: %s\n", optarg);
                         status = 1;
                         goto cleanup;
                     }
@@ -1479,7 +1479,7 @@ int command_start(int argc, char *argv[]) {
                 }
 
                 if (!parse_rlimit_params(optarg, rlimits + rlimits_count)) {
-                    print_error("illegal argument for --rlimit: %s", optarg);
+                    fprintf(stderr, "*** error: illegal argument for --rlimit: %s\n", optarg);
                     status = 1;
                     goto cleanup;
                 }
@@ -1494,7 +1494,7 @@ int command_start(int argc, char *argv[]) {
             }
             case 'C':
                 if (!*optarg) {
-                    print_error("--chdir cannot be empty string");
+                    fprintf(stderr, "*** error: --chdir cannot be an empty string\n");
                     status = 1;
                     goto cleanup;
                 }
@@ -1517,7 +1517,7 @@ int command_start(int argc, char *argv[]) {
 
     int count = argc - optind;
     if (count < 2) {
-        print_error("not enough arguments");
+        fprintf(stderr, "*** error: not enough arguments\n");
         short_usage(argc, argv);
         status = 1;
         goto cleanup;
@@ -1528,7 +1528,7 @@ int command_start(int argc, char *argv[]) {
     char **command_argv = argv + optind;
 
     if (!is_valid_name(name)) {
-        print_error("illegal name: '%s'", name);
+        fprintf(stderr, "*** error: illegal name: '%s'\n", name);
         short_usage(argc, argv);
         status = 1;
         goto cleanup;
@@ -1538,13 +1538,13 @@ int command_start(int argc, char *argv[]) {
     gid_t gid = (gid_t)-1;
 
     if (user != NULL && get_uid_from_name(user, &uid) != 0) {
-        print_error("getting user ID for %s: %s", user, strerror(errno));
+        fprintf(stderr, "*** error: getting user ID for %s: %s\n", user, strerror(errno));
         status = 1;
         goto cleanup;
     }
 
     if (group != NULL && get_gid_from_name(group, &gid) != 0) {
-        print_error("getting group ID for %s: %s", group, strerror(errno));
+        fprintf(stderr, "*** error: getting group ID for %s: %s\n", group, strerror(errno));
         status = 1;
         goto cleanup;
     }
@@ -1559,7 +1559,7 @@ int command_start(int argc, char *argv[]) {
     if (chroot_path != NULL) {
         // chroot case
         if (!can_list(chroot_path, xuid, xgid)) {
-            print_error("illegal chroot path: %s: %s", chroot_path, strerror(errno));
+            fprintf(stderr, "*** error: illegal chroot path: %s: %s\n", chroot_path, strerror(errno));
             status = 1;
             goto cleanup;
         }
@@ -1568,7 +1568,7 @@ int command_start(int argc, char *argv[]) {
             if (chdir_path[0] != '/') {
                 char *abs_chdir_path = join_path("/", chdir_path);
                 if (abs_chdir_path == NULL) {
-                    print_error("join_path(\"/\", \"%s\"): %s", chdir_path, strerror(errno));
+                    fprintf(stderr, "*** error: join_path(\"/\", \"%s\"): %s\n", chdir_path, strerror(errno));
                     status = 1;
                     goto cleanup;
                 }
@@ -1578,7 +1578,7 @@ int command_start(int argc, char *argv[]) {
 
             char *norm_chdir_path = normpath_no_escape(chdir_path);
             if (norm_chdir_path == NULL) {
-                print_error("normpath_no_escape(\"%s\"): %s", chdir_path, strerror(errno));
+                fprintf(stderr, "*** error: normpath_no_escape(\"%s\"): %s\n", chdir_path, strerror(errno));
                 status = 1;
                 goto cleanup;
             }
@@ -1591,13 +1591,13 @@ int command_start(int argc, char *argv[]) {
 
             char *chroot_chdir_path = join_path(chroot_path, chdir_path);
             if (chroot_chdir_path == NULL) {
-                print_error("join_path(\"%s\", \"%s\"): %s", chroot_path, chdir_path, strerror(errno));
+                fprintf(stderr, "*** error: join_path(\"%s\", \"%s\"): %s\n", chroot_path, chdir_path, strerror(errno));
                 status = 1;
                 goto cleanup;
             }
 
             if (!can_list(chroot_chdir_path, xuid, xgid)) {
-                print_error("illegal chdir path: %s: %s", chroot_chdir_path, strerror(errno));
+                fprintf(stderr, "*** error: illegal chdir path: %s: %s\n", chroot_chdir_path, strerror(errno));
                 free(chroot_chdir_path);
                 status = 1;
                 goto cleanup;
@@ -1608,14 +1608,14 @@ int command_start(int argc, char *argv[]) {
         if (command[0] != '/') {
             char *chroot_abs_command = join_path(chdir_path == NULL ? "/" : chdir_path, command);
             if (chroot_abs_command == NULL) {
-                print_error("join_path(\"%s\", \"%s\"): %s", chdir_path == NULL ? "/" : chdir_path, command, strerror(errno));
+                fprintf(stderr, "*** error: join_path(\"%s\", \"%s\"): %s\n", chdir_path == NULL ? "/" : chdir_path, command, strerror(errno));
                 status = 1;
                 goto cleanup;
             }
 
             char *norm_command = normpath_no_escape(chroot_abs_command);
             if (norm_command == NULL) {
-                print_error("normpath_no_escape(\"%s\"): %s", chroot_abs_command, strerror(errno));
+                fprintf(stderr, "*** error: normpath_no_escape(\"%s\"): %s\n", chroot_abs_command, strerror(errno));
                 free(chroot_abs_command);
                 status = 1;
                 goto cleanup;
@@ -1627,7 +1627,7 @@ int command_start(int argc, char *argv[]) {
         } else {
             char *norm_command = normpath_no_escape(command);
             if (norm_command == NULL) {
-                print_error("normpath_no_escape(\"%s\"): %s", command, strerror(errno));
+                fprintf(stderr, "*** error: normpath_no_escape(\"%s\"): %s\n", command, strerror(errno));
                 status = 1;
                 goto cleanup;
             }
@@ -1638,13 +1638,13 @@ int command_start(int argc, char *argv[]) {
 
         char *abs_command = join_path(chroot_path, command);
         if (abs_command == NULL) {
-            print_error("join_path(\"%s\", \"%s\"): %s", chroot_path, command, strerror(errno));
+            fprintf(stderr, "*** error: join_path(\"%s\", \"%s\"): %s\n", chroot_path, command, strerror(errno));
             status = 1;
             goto cleanup;
         }
 
         if (!can_execute(abs_command, xuid, xgid)) {
-            print_error("illegal service executable: %s: %s", abs_command, strerror(errno));
+            fprintf(stderr, "*** error: illegal service executable: %s: %s\n", abs_command, strerror(errno));
             free(abs_command);
             status = 1;
             goto cleanup;
@@ -1655,7 +1655,7 @@ int command_start(int argc, char *argv[]) {
         if (chdir_path != NULL) {
             char *abs_chdir_path = abspath(chdir_path);
             if (abs_chdir_path == NULL) {
-                print_error("abspath(\"%s\"): %s", chdir_path, strerror(errno));
+                fprintf(stderr, "*** error: abspath(\"%s\"): %s\n", chdir_path, strerror(errno));
                 status = 1;
                 goto cleanup;
             }
@@ -1663,14 +1663,14 @@ int command_start(int argc, char *argv[]) {
             free_chdir_path = true;
 
             if (!can_list(chdir_path, xuid, xgid)) {
-                print_error("illegal chdir path: %s: %s", chdir_path, strerror(errno));
+                fprintf(stderr, "*** error: illegal chdir path: %s: %s\n", chdir_path, strerror(errno));
                 status = 1;
                 goto cleanup;
             }
 
             char *abs_command = join_path(abs_chdir_path, command);
             if (abs_command == NULL) {
-                print_error("join_path(\"%s\", \"%s\"): %s", abs_chdir_path, command, strerror(errno));
+                fprintf(stderr, "*** error: join_path(\"%s\", \"%s\"): %s\n", abs_chdir_path, command, strerror(errno));
                 status = 1;
                 goto cleanup;
             }
@@ -1680,7 +1680,7 @@ int command_start(int argc, char *argv[]) {
         } else if (command[0] != '/') {
             char *abs_command = abspath(command);
             if (abs_command == NULL) {
-                print_error("abspath(\"%s\"): %s", command, strerror(errno));
+                fprintf(stderr, "*** error: abspath(\"%s\"): %s\n", command, strerror(errno));
                 status = 1;
                 goto cleanup;
             }
@@ -1690,14 +1690,14 @@ int command_start(int argc, char *argv[]) {
         }
 
         if (!can_execute(command, xuid, xgid)) {
-            print_error("illegal service executable: %s: %s", command, strerror(errno));
+            fprintf(stderr, "*** error: illegal service executable: %s: %s\n", command, strerror(errno));
             status = 1;
             goto cleanup;
         }
     }
 
     if (crash_report != NULL && !can_execute(crash_report, selfuid, selfgid)) {
-        print_error("illegal crash report executable: %s: %s", crash_report, strerror(errno));
+        fprintf(stderr, "*** error: illegal crash report executable: %s: %s\n", crash_report, strerror(errno));
         status = 1;
         goto cleanup;
     }
@@ -1710,7 +1710,7 @@ int command_start(int argc, char *argv[]) {
         // So instead I simply set the priority value already here and the
         // service-runner process will also run at the given priority.
         if (setpriority(PRIO_PROCESS, 0, priority) != 0) {
-            print_error("cannot set process priority of service to %d: %s", priority, strerror(errno));
+            fprintf(stderr, "*** error: cannot set process priority of service to %d: %s\n", priority, strerror(errno));
             status = 1;
             goto cleanup;
         }
@@ -1746,7 +1746,7 @@ int command_start(int argc, char *argv[]) {
         size_t pidfile_runner_size = strlen(pidfile) + strlen(".runner") + 1;
         pidfile_runner = malloc(pidfile_runner_size);
         if (pidfile_runner == NULL) {
-            print_error("malloc(%zu): %s", pidfile_runner_size, strerror(errno));
+            fprintf(stderr, "*** error: malloc(%zu): %s\n", pidfile_runner_size, strerror(errno));
             status = 1;
             goto cleanup;
         }
@@ -1756,7 +1756,7 @@ int command_start(int argc, char *argv[]) {
     }
 
     if (!can_read_write(pidfile, selfuid, selfgid)) {
-        print_error("cannot read and write file: %s: %s", pidfile, strerror(errno));
+        fprintf(stderr, "*** error: cannot read and write file: %s: %s\n", pidfile, strerror(errno));
         status = 1;
         goto cleanup;
     }
@@ -1767,33 +1767,33 @@ int command_start(int argc, char *argv[]) {
         if (read_pidfile(pidfile_runner, &runner_pid) == 0) {
             errno = 0;
             if (kill(runner_pid, 0) == 0 || errno == EPERM) {
-                print_error("%s is already running", name);
+                fprintf(stderr, "*** error: %s is already running\n", name);
                 goto cleanup;
             } else if (errno == ESRCH) {
-                print_error("%s exists, but PID %d doesn't exist.", pidfile_runner, runner_pid);
+                fprintf(stderr, "*** error: %s exists, but PID %d doesn't exist.\n", pidfile_runner, runner_pid);
                 pid_t other_pid = 0;
                 if (read_pidfile(pidfile, &other_pid) == 0) {
                     if (kill(other_pid, 0) == 0) {
-                        print_error("Service is running (PID: %d), but it's service-runner is not!", other_pid);
-                        print_error("You probably will want to kill that process?");
+                        fprintf(stderr, "*** error: Service is running (PID: %d), but it's service-runner is not!\n", other_pid);
+                        fprintf(stderr, "           You probably will want to kill that process?\n");
                         status = 1;
                         goto cleanup;
                     }
 
                     if (unlink(pidfile) != 0 && errno != ENOENT) {
-                        print_error("unlink(\"%s\"): %s", pidfile, strerror(errno));
+                        fprintf(stderr, "*** error: unlink(\"%s\"): %s\n", pidfile, strerror(errno));
                         status = 1;
                         goto cleanup;
                     }
                 }
 
                 if (unlink(pidfile_runner) != 0 && errno != ENOENT) {
-                    print_error("unlink(\"%s\"): %s", pidfile_runner, strerror(errno));
+                    fprintf(stderr, "*** error: unlink(\"%s\"): %s\n", pidfile_runner, strerror(errno));
                     status = 1;
                     goto cleanup;
                 }
             } else {
-                print_error("kill(%d, 0): %s", runner_pid, strerror(errno));
+                fprintf(stderr, "*** error: kill(%d, 0): %s\n", runner_pid, strerror(errno));
                 status = 1;
                 goto cleanup;
             }
@@ -1810,19 +1810,19 @@ int command_start(int argc, char *argv[]) {
         const time_t now = time(NULL);
         struct tm local_now;
         if (localtime_r(&now, &local_now) == NULL) {
-            print_error("getting local time: %s", strerror(errno));
+            fprintf(stderr, "*** error: getting local time: %s\n", strerror(errno));
             status = 1;
             goto cleanup;
         }
 
         if (strftime(logfile_path_buf, sizeof(logfile_path_buf), logfile, &local_now) == 0) {
-            print_error("cannot format logfile \"%s\": %s", logfile, strerror(errno));
+            fprintf(stderr, "*** error: cannot format logfile \"%s\": %s\n", logfile, strerror(errno));
             status = 1;
             goto cleanup;
         }
 
         if (!can_read_write(logfile_path_buf, selfuid, selfgid)) {
-            print_error("cannot read and write file: %s", logfile);
+            fprintf(stderr, "*** error: cannot read and write file: %s\n", logfile);
             status = 1;
             goto cleanup;
         }
@@ -1834,20 +1834,20 @@ int command_start(int argc, char *argv[]) {
 
     logfile_fd = open(logfile_path, O_CREAT | O_WRONLY | O_CLOEXEC | O_APPEND, 0644);
     if (logfile_fd == -1) {
-        print_error("cannot open logfile: %s: %s", logfile_path, strerror(errno));
+        fprintf(stderr, "*** error: cannot open logfile: %s: %s\n", logfile_path, strerror(errno));
         status = 1;
         goto cleanup;
     }
 
     if (chown_logfile && fchown(logfile_fd, xuid, xgid) != 0) {
-        print_error("cannot change owner of logfile: %s: %s", logfile_path, strerror(errno));
+        fprintf(stderr, "*** error: cannot change owner of logfile: %s: %s\n", logfile_path, strerror(errno));
         status = 1;
         goto cleanup;
     }
 
     const pid_t pid = fork();
     if (pid < 0) {
-        print_error("fork for deamonize failed: %s", strerror(errno));
+        fprintf(stderr, "*** error: fork for deamonize failed: %s\n", strerror(errno));
         status = 1;
         goto cleanup;
     } else if (pid != 0) {
@@ -1872,7 +1872,7 @@ int command_start(int argc, char *argv[]) {
         sigaddset(&mask, SIGUSR1);
         sigaddset(&mask, SIGCHLD);
         if (sigprocmask(SIG_BLOCK, &mask, NULL) != 0) {
-            print_error("sigprocmask(SIG_BLOCK, &mask, NULL): %s", strerror(errno));
+            fprintf(stderr, "*** error: sigprocmask(SIG_BLOCK, &mask, NULL): %s\n", strerror(errno));
             status = 1;
             goto cleanup;
         }
@@ -1881,34 +1881,34 @@ int command_start(int argc, char *argv[]) {
     const pid_t runner_pid = getpid();
     {
         if (write_pidfile(pidfile_runner, runner_pid) != 0) {
-            print_error("write_pidfile(\"%s\", %u): %s", pidfile_runner, getpid(), strerror(errno));
+            fprintf(stderr, "*** error: write_pidfile(\"%s\", %u): %s\n", pidfile_runner, getpid(), strerror(errno));
             status = 1;
             goto cleanup;
         }
 
         // setup standard I/O
         if (close(STDIN_FILENO) != 0 && errno != EBADFD) {
-            print_error("close(STDIN_FILENO): %s", strerror(errno));
+            fprintf(stderr, "*** error: close(STDIN_FILENO): %s\n", strerror(errno));
             status = 1;
             goto cleanup;
         }
 
         int stdin_fd = open("/dev/null", O_RDONLY);
         if (stdin_fd == -1) {
-            print_error("open(\"/dev/null\", O_RDONLY): %s", strerror(errno));
+            fprintf(stderr, "*** error: open(\"/dev/null\", O_RDONLY): %s\n", strerror(errno));
             status = 1;
             goto cleanup;
         }
 
         if (stdin_fd != STDIN_FILENO) {
             if (dup2(stdin_fd, STDIN_FILENO) == -1) {
-                print_error("dup2(stdin_fd, STDIN_FILENO): %s", strerror(errno));
+                fprintf(stderr, "*** error: dup2(stdin_fd, STDIN_FILENO): %s\n", strerror(errno));
                 status = 1;
                 goto cleanup;
             }
 
             if (close(stdin_fd) != 0) {
-                print_error("close(stdin_fd): %s", strerror(errno));
+                fprintf(stderr, "*** error: close(stdin_fd): %s\n", strerror(errno));
                 status = 1;
                 goto cleanup;
             }
@@ -1916,14 +1916,14 @@ int command_start(int argc, char *argv[]) {
 
         fflush(stdout);
         if (dup2(logfile_fd, STDOUT_FILENO) == -1) {
-            print_error("dup2(logfile_fd, STDOUT_FILENO): %s", strerror(errno));
+            fprintf(stderr, "*** error: dup2(logfile_fd, STDOUT_FILENO): %s\n", strerror(errno));
             status = 1;
             goto cleanup;
         }
 
         fflush(stderr);
         if (dup2(logfile_fd, STDERR_FILENO) == -1) {
-            print_error("dup2(logfile_fd, STDERR_FILENO): %s", strerror(errno));
+            fprintf(stderr, "*** error: dup2(logfile_fd, STDERR_FILENO): %s\n", strerror(errno));
             status = 1;
             goto cleanup;
         }
