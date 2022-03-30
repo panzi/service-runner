@@ -107,6 +107,7 @@
         "               %h .... RFC 7231 IMF-fixdate: '%ga, %gd %gb %gY %gH:%gM:%gS GMT'\n"                                     \
         "               %% .... outputs %\n"                                                                                    \
         "\n"                                                                                                                    \
+        "           --manual-logrotate          Pass this to enable manual log-rotation via the logrotate service-runner command.\n" \
         "           --restart=WHEN\n"                                                                                           \
         "\n"                                                                                                                    \
         "             Restart policy. Possible values for WHEN:\n"                                                              \
@@ -165,6 +166,15 @@
         "       Print some status information about service <name>.\n"  \
         "\n"                                                            \
         "   OPTIONS:\n"                                                 \
+        HELP_OPT_PIDFILE
+
+#define HELP_CMD_LOGROTATE_HDR                                                  \
+        "   %s logrotate <name> [options]\n"
+#define HELP_CMD_LOGROTATE_DESCR                                                \
+        "\n"                                                                    \
+        "       Issue manual log-rotate to service-runner process. The service-runner has to be started with the --manual-logrotate argument for this command to have any effect.\n" \
+        "\n"                                                                    \
+        "   OPTIONS:\n"                                                         \
         HELP_OPT_PIDFILE
 
 #define HELP_CMD_LOGS_HDR                                                                \
@@ -512,11 +522,12 @@ void print_wrapped_text(FILE *fp, const char *text, size_t linelen) {
 void short_usage(int argc, char *argv[]) {
     const char *progname = get_progname(argc, argv);
     printf("\n");
-    printf("Usage: %s start   <name> [options] [--] <command> [argument...]\n", progname);
-    printf("       %s stop    <name> [options]\n", progname);
-    printf("       %s restart <name> [options]\n", progname);
-    printf("       %s status  <name> [options]\n", progname);
-    printf("       %s logs    <name> [options]\n", progname);
+    printf("Usage: %s start     <name> [options] [--] <command> [argument...]\n", progname);
+    printf("       %s stop      <name> [options]\n", progname);
+    printf("       %s restart   <name> [options]\n", progname);
+    printf("       %s status    <name> [options]\n", progname);
+    printf("       %s logrotate <name> [options]\n", progname);
+    printf("       %s logs      <name> [options]\n", progname);
     printf("       %s help [command]\n", progname);
     printf("       %s version\n", progname);
 }
@@ -550,6 +561,9 @@ void usage(int argc, char *argv[]) {
 
     printf(HELP_CMD_STATUS_HDR, progname);
     print_wrapped_text(stdout, HELP_CMD_STATUS_DESCR "\n", wsize.ws_col);
+
+    printf(HELP_CMD_LOGROTATE_HDR, progname);
+    print_wrapped_text(stdout, HELP_CMD_LOGROTATE_DESCR "\n", wsize.ws_col);
 
     printf(HELP_CMD_LOGS_HDR, progname);
     print_wrapped_text(stdout, HELP_CMD_LOGS_DESCR "\n", wsize.ws_col);
@@ -609,6 +623,10 @@ int command_help(int argc, char *argv[]) {
     } else if (strcmp(command, "status") == 0) {
         printf("\n" HELP_CMD_STATUS_HDR, progname);
         print_wrapped_text(stdout, HELP_CMD_STATUS_DESCR, wsize.ws_col);
+        return 0;
+    } else if (strcmp(command, "logrotate") == 0) {
+        printf("\n" HELP_CMD_LOGROTATE_HDR, progname);
+        print_wrapped_text(stdout, HELP_CMD_LOGROTATE_DESCR, wsize.ws_col);
         return 0;
     } else if (strcmp(command, "logs") == 0) {
         printf("\n" HELP_CMD_LOGS_HDR, progname);

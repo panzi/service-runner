@@ -215,6 +215,7 @@ enum {
     OPT_START_LOGFILE,
     OPT_START_CHOWN_LOGFILE,
     OPT_START_LOG_FORMAT,
+    OPT_START_MANUAL_LOGROTATE,
     OPT_START_USER,
     OPT_START_GROUP,
     OPT_START_PRIORITY,
@@ -234,6 +235,7 @@ static const struct option start_options[] = {
     [OPT_START_LOGFILE]          = { "logfile",          required_argument, 0, 'l' },
     [OPT_START_CHOWN_LOGFILE]    = { "chown-logfile",    no_argument,       0,  0  },
     [OPT_START_LOG_FORMAT]       = { "log-format",       required_argument, 0,  0  },
+    [OPT_START_MANUAL_LOGROTATE] = { "manual-logrotate", no_argument,       0,  0  },
     [OPT_START_USER]             = { "user",             required_argument, 0, 'u' },
     [OPT_START_GROUP]            = { "group",            required_argument, 0, 'g' },
     [OPT_START_PRIORITY]         = { "priority",         required_argument, 0, 'N' },
@@ -263,6 +265,7 @@ static pid_t service_pid = 0;
 static int service_pidfd = -1;
 static volatile bool running = false;
 static volatile bool restart_issued = false;
+static volatile bool logrotate_issued = false;
 static volatile bool got_sigchld = false;
 
 #if !defined(__GNUC__) && !defined(__clang__)
@@ -1223,6 +1226,11 @@ static void handles_stop_signal(int sig) {
     }
 }
 
+static void handles_logrotate(int sig) {
+    print_info("received signal %d, performing manual log-rotate...", sig);
+    logrotate_issued = true;
+}
+
 static void handle_restart_signal(int sig) {
     if (service_pid == 0) {
         print_error("received signal %d, but service process is not running -> ignored", sig);
@@ -1314,6 +1322,7 @@ int command_start(int argc, char *argv[]) {
     bool free_chdir_path  = false;
     bool cleanup_pidfiles = false;
     bool rlimit_fsize = false;
+    bool manual_logrotate = false;
 
     char *pidfile_runner = NULL;
     char logfile_path_buf[PATH_MAX];
@@ -1356,6 +1365,10 @@ int command_start(int argc, char *argv[]) {
                             status = 1;
                             goto cleanup;
                         }
+                        break;
+
+                    case OPT_START_MANUAL_LOGROTATE:
+                        manual_logrotate = true;
                         break;
 
                     case OPT_START_RESTART:
@@ -1801,7 +1814,7 @@ int command_start(int argc, char *argv[]) {
     }
 
     const bool do_logrotate = strchr(logfile, '%') != NULL;
-    const bool do_pipe = do_logrotate || rlimit_fsize;
+    const bool do_pipe = do_logrotate || rlimit_fsize || manual_logrotate;
     const char *logfile_path;
 
     // TODO: validate log_format
@@ -2112,6 +2125,10 @@ int command_start(int argc, char *argv[]) {
                     print_error("(parent) signal(SIGINT, handles_stop_signal): %s", strerror(errno));
                 }
 
+                if (manual_logrotate && signal(SIGHUP, handles_logrotate) == SIG_ERR) {
+                    print_error("(parent) signal(SIGHUP, handles_logrotate): %s", strerror(errno));
+                }
+
                 if (signal(SIGUSR1, handle_restart_signal) == SIG_ERR) {
                     print_error("(parent) signal(SIGUSR1, handle_restart_signal): %s", strerror(errno));
                 }
@@ -2121,6 +2138,9 @@ int command_start(int argc, char *argv[]) {
                 sigaddset(&mask, SIGTERM);
                 sigaddset(&mask, SIGQUIT);
                 sigaddset(&mask, SIGINT);
+                if (manual_logrotate) {
+                    sigaddset(&mask, SIGHUP);
+                }
                 sigaddset(&mask, SIGUSR1);
                 if (sigprocmask(SIG_UNBLOCK, &mask, NULL) != 0) {
                     print_error("(parent) sigprocmask(SIG_UNBLOCK, &mask, NULL): %s", strerror(errno));
@@ -2215,88 +2235,95 @@ int command_start(int argc, char *argv[]) {
                 }
 
                 if (do_pipe) {
-                    if (pollfds[POLLFD_PIPE].revents & POLLIN) {
+                    const bool has_logdata = pollfds[POLLFD_PIPE].revents & POLLIN;
+                    if (has_logdata || logrotate_issued) {
                         // log-handling
+                        char new_logfile_path_buf[PATH_MAX];
+                        const char *new_logfile_path = NULL;
                         if (do_logrotate) {
-                            time_t now = time(NULL);
+                            const time_t now = time(NULL);
                             struct tm local_now;
-                            char new_logfile_path_buf[PATH_MAX];
 
                             if (localtime_r(&now, &local_now) == NULL) {
                                 print_error("(parent) getting local time: %s", strerror(errno));
-                                status = 1;
-                                goto cleanup;
-                            }
-
-                            if (strftime(new_logfile_path_buf, sizeof(new_logfile_path_buf), logfile, &local_now) == 0) {
+                            } else if (strftime(new_logfile_path_buf, sizeof(new_logfile_path_buf), logfile, &local_now) == 0) {
                                 print_error("(parent) cannot format logfile \"%s\": %s", logfile, strerror(errno));
-                                status = 1;
-                                goto cleanup;
+                            } else if (strcmp(new_logfile_path_buf, logfile_path_buf) != 0) {
+                                new_logfile_path = new_logfile_path_buf;
+                            }
+                        } else if (logrotate_issued) {
+                            logrotate_issued = false;
+                            // just re-open the same file
+                            new_logfile_path = logfile_path;
+                        }
+
+                        if (new_logfile_path != NULL) {
+                            // (re-)open logfile
+                            int new_logfile_fd = open(new_logfile_path, O_CREAT | O_WRONLY | O_CLOEXEC | O_APPEND, 0644);
+                            if (logfile_fd == -1) {
+                                print_error("(parent) cannot open logfile: %s: %s", new_logfile_path, strerror(errno));
                             }
 
-                            if (strcmp(new_logfile_path_buf, logfile_path_buf) != 0) {
-                                int new_logfile_fd = open(new_logfile_path_buf, O_CREAT | O_WRONLY | O_CLOEXEC | O_APPEND, 0644);
-                                if (logfile_fd == -1) {
-                                    print_error("(parent) cannot open logfile: %s: %s", new_logfile_path_buf, strerror(errno));
-                                }
+                            if (chown_logfile && fchown(new_logfile_fd, xuid, xgid) != 0) {
+                                print_error("(parent) cannot change owner of logfile: %s: %s", new_logfile_path, strerror(errno));
+                            }
 
-                                if (chown_logfile && fchown(new_logfile_fd, xuid, xgid) != 0) {
-                                    print_error("(parent) cannot change owner of logfile: %s: %s", new_logfile_path_buf, strerror(errno));
-                                }
+                            if (close(logfile_fd) != 0) {
+                                print_error("(parent) close(logfile_fd): %s", strerror(errno));
+                            }
 
-                                if (close(logfile_fd) != 0) {
-                                    print_error("(parent) close(logfile_fd): %s", strerror(errno));
-                                }
+                            logfile_fd = new_logfile_fd;
+                            fflush(stdout);
+                            if (dup2(logfile_fd, STDOUT_FILENO) == -1) {
+                                print_error("(parent) dup2(logfile_fd, STDOUT_FILENO): %s", strerror(errno));
+                            }
 
-                                logfile_fd = new_logfile_fd;
-                                fflush(stdout);
-                                if (dup2(logfile_fd, STDOUT_FILENO) == -1) {
-                                    print_error("(parent) dup2(logfile_fd, STDOUT_FILENO): %s", strerror(errno));
-                                }
+                            fflush(stderr);
+                            if (dup2(logfile_fd, STDERR_FILENO) == -1) {
+                                print_error("(parent) dup2(logfile_fd, STDERR_FILENO): %s", strerror(errno));
+                            }
 
-                                fflush(stderr);
-                                if (dup2(logfile_fd, STDERR_FILENO) == -1) {
-                                    print_error("(parent) dup2(logfile_fd, STDERR_FILENO): %s", strerror(errno));
-                                }
-
+                            if (new_logfile_path == new_logfile_path_buf) {
                                 strcpy(logfile_path_buf, new_logfile_path_buf);
                             }
                         }
 
-                        // handle log messages
-                        ssize_t count = splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK);
-                        if (count < 0 && errno != EINTR) {
-                            if (errno == EINVAL) {
-                                // the docker volume filesystem doesn't support splice()
-                                // and sendfile() doesn't support out_fd with O_APPEND set
-                                // -> manual read()/write()
-                                char buf[BUFSIZ];
-                                ssize_t rcount = read(pipefd[PIPE_READ], buf, sizeof(buf));
-                                if (rcount < 0) {
-                                    if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                                        print_error("(parent) read(pipefd[PIPE_READ], buf, sizeof(buf)): %s",
-                                            strerror(errno));
-                                    }
-                                    break;
-                                } else {
-                                    size_t offset = 0;
-                                    while (offset < rcount) {
-                                        ssize_t wcount = write(logfile_fd, buf + offset, rcount - offset);
-                                        if (wcount < 0) {
-                                            if (errno == EINTR) {
-                                                continue;
-                                            }
-                                            print_error("(parent) write(logfile_fd, buf + offset, rcount - offset): %s",
+                        if (has_logdata) {
+                            // handle log messages
+                            const ssize_t count = splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK);
+                            if (count < 0 && errno != EINTR) {
+                                if (errno == EINVAL) {
+                                    // The docker volume filesystem doesn't support splice()
+                                    // and sendfile() doesn't support out_fd with O_APPEND set
+                                    // -> manual read()/write()
+                                    char buf[BUFSIZ];
+                                    ssize_t rcount = read(pipefd[PIPE_READ], buf, sizeof(buf));
+                                    if (rcount < 0) {
+                                        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                                            print_error("(parent) read(pipefd[PIPE_READ], buf, sizeof(buf)): %s",
                                                 strerror(errno));
-                                            break;
                                         }
+                                        break;
+                                    } else {
+                                        size_t offset = 0;
+                                        while (offset < rcount) {
+                                            ssize_t wcount = write(logfile_fd, buf + offset, rcount - offset);
+                                            if (wcount < 0) {
+                                                if (errno == EINTR) {
+                                                    continue;
+                                                }
+                                                print_error("(parent) write(logfile_fd, buf + offset, rcount - offset): %s",
+                                                    strerror(errno));
+                                                break;
+                                            }
 
-                                        offset += wcount;
+                                            offset += wcount;
+                                        }
                                     }
+                                } else {
+                                    print_error("(parent) splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK): %s",
+                                        strerror(errno));
                                 }
-                            } else {
-                                print_error("(parent) splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK): %s",
-                                    strerror(errno));
                             }
                         }
                     }

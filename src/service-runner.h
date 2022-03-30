@@ -59,12 +59,13 @@ char *abspath(const char *path);
 void usage        (int argc, char *argv[]);
 void short_usage  (int argc, char *argv[]);
 
-int command_start  (int argc, char *argv[]);
-int command_stop   (int argc, char *argv[]);
-int command_restart(int argc, char *argv[]);
-int command_status (int argc, char *argv[]);
-int command_logs   (int argc, char *argv[]);
-int command_help   (int argc, char *argv[]);
+int command_start    (int argc, char *argv[]);
+int command_stop     (int argc, char *argv[]);
+int command_restart  (int argc, char *argv[]);
+int command_status   (int argc, char *argv[]);
+int command_logrotate(int argc, char *argv[]);
+int command_logs     (int argc, char *argv[]);
+int command_help     (int argc, char *argv[]);
 
 enum AbsPathResult {
     ABS_PATH_ERR,

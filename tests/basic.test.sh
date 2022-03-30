@@ -4,6 +4,13 @@ set -eo pipefail
 
 function test_01_help_ok () {
     assert_ok "$SERVICE_RUNNER" help
+    assert_ok "$SERVICE_RUNNER" help start
+    assert_ok "$SERVICE_RUNNER" help stop
+    assert_ok "$SERVICE_RUNNER" help status
+    assert_ok "$SERVICE_RUNNER" help restart
+    assert_ok "$SERVICE_RUNNER" help logrotate
+    assert_ok "$SERVICE_RUNNER" help logs
+    assert_ok "$SERVICE_RUNNER" help help
 }
 
 function test_02_start_status_stop_service () {
@@ -113,7 +120,7 @@ function test_10_logrotate () {
     local logfile3
     local logfile4
 
-    LOGFILE="/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.logrotate.%Y-%m-%d_%H-%M-%S.txt"
+    LOGFILE="/tmp/service-runner.tests.$TEST_SUIT.$CURRENT_TEST_NUMBER.$$.logrotate.%Y-%m-%d_%H-%M-%S.log"
     logfile1=$(date -d '1 seconds' +"$LOGFILE")
     logfile2=$(date -d '2 seconds' +"$LOGFILE")
     logfile3=$(date -d '3 seconds' +"$LOGFILE")
@@ -127,6 +134,21 @@ function test_10_logrotate () {
     assert_grep message "$logfile2"
     assert_grep message "$logfile3"
     assert_grep message "$logfile4"
+    rm -- "$LOGFILE" "$logfile1" "$logfile2" "$logfile3" "$logfile4" || true
+}
+
+function test_10_manual_logrotate () {
+    assert_ok "$SERVICE_RUNNER" start test --pidfile="$PIDFILE" --logfile="$LOGFILE" --manual-logrotate ./tests/services/long_running_service.sh 0.1
+    sleep 0.5
+    mv -- "$LOGFILE" "$LOGFILE.bak"
+    assert_ok "$SERVICE_RUNNER" logrotate test --pidfile="$PIDFILE"
+    sleep 0.5
+    assert_ok   "$SERVICE_RUNNER" stop   test --pidfile="$PIDFILE"
+    assert_fail "$SERVICE_RUNNER" status test --pidfile="$PIDFILE"
+    assert_fail pgrep service-runner
+    assert_grep "performing manual log-rotate" "$LOGFILE.bak"
+    assert_grep message "$LOGFILE"
+    rm -- "$LOGFILE.bak" || true
 }
 
 function test_11_lsb_status () {

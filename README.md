@@ -28,11 +28,12 @@ Usage
 -----
 
 ```plain
-Usage: service-runner start   <name> [options] [--] <command> [argument...]
-       service-runner stop    <name> [options]
-       service-runner restart <name> [options]
-       service-runner status  <name> [options]
-       service-runner logs    <name> [options]
+Usage: service-runner start     <name> [options] [--] <command> [argument...]
+       service-runner stop      <name> [options]
+       service-runner restart   <name> [options]
+       service-runner status    <name> [options]
+       service-runner logrotate <name> [options]
+       service-runner logs      <name> [options]
        service-runner help [command]
        service-runner version
 
@@ -106,6 +107,8 @@ COMMANDS:
                %h .... RFC 7231 IMF-fixdate: '%ga, %gd %gb %gY %gH:%gM:%gS GMT'
                %% .... outputs %
 
+           --manual-logrotate          Pass this to enable manual log-rotation via 
+                                       the logrotate service-runner command.
            --restart=WHEN
 
              Restart policy. Possible values for WHEN:
@@ -184,6 +187,16 @@ COMMANDS:
        -p, --pidfile=FILE              Use FILE as the pidfile. default: 
                                        /var/run/NAME.pid
 
+   service-runner logrotate <name> [options]
+
+       Issue manual log-rotate to service-runner process. The service-runner has to 
+       be started with the --manual-logrotate argument for this command to have any 
+       effect.
+
+   OPTIONS:
+       -p, --pidfile=FILE              Use FILE as the pidfile. default: 
+                                       /var/run/NAME.pid
+
    service-runner logs <name> [options]
 
        Print logs of service <name>.
@@ -203,5 +216,4 @@ COMMANDS:
        Print version string.
 
 (c) 2022 Mathias Panzenböck
-GitHub: https://github.com/panzi/service-runner
-```
+GitHub: https://github.com/panzi/service-runner```
