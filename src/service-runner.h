@@ -10,8 +10,8 @@ extern "C" {
 #endif
 
 #define SERVICE_RUNNER_VERSION_MAJOR 1
-#define SERVICE_RUNNER_VERSION_MINOR 5
-#define SERVICE_RUNNER_VERSION_PATCH 1
+#define SERVICE_RUNNER_VERSION_MINOR 6
+#define SERVICE_RUNNER_VERSION_PATCH 0
 
 #ifdef NDEBUG
     #define LOG_TEMPLATE_TEXT "[%t] service-runner: [%L] %s"
