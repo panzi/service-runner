@@ -1942,6 +1942,8 @@ int command_start(int argc, char *argv[]) {
         }
     }
 
+    print_info("starting...");
+
     running = true;
     while (running) {
         if (do_pipe) {
