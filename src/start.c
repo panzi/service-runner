@@ -1283,7 +1283,7 @@ int command_start(int argc, char *argv[]) {
     // between the service-runner process and the service itself have
     // a smaller chance to interfere.
     // This is ok since log messages as written here are always single
-    // and whole lines (assuming stderr(errno) never returns a
+    // and whole lines (assuming strerror(errno) never returns a
     // multiline string).
     if (setvbuf(stderr, NULL, _IOLBF, 0) != 0) {
         perror("*** error: setvbuf(stderr, NULL, _IOLBF, 0)");
