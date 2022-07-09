@@ -1200,7 +1200,7 @@ static int get_gid_from_name(const char *groupname, gid_t *gidptr) {
     return 0;
 }
 
-static void handles_stop_signal(int sig) {
+static void handle_stop_signal(int sig) {
     if (service_pid == 0) {
         print_error("received signal %d, but service process is not running -> ignored", sig);
         return;
@@ -2124,16 +2124,16 @@ int command_start(int argc, char *argv[]) {
             // parent: service-runner process
             {
                 // setup signal handling
-                if (signal(SIGTERM, handles_stop_signal) == SIG_ERR) {
-                    print_error("(parent) signal(SIGTERM, handles_stop_signal): %s", strerror(errno));
+                if (signal(SIGTERM, handle_stop_signal) == SIG_ERR) {
+                    print_error("(parent) signal(SIGTERM, handle_stop_signal): %s", strerror(errno));
                 }
 
-                if (signal(SIGQUIT, handles_stop_signal) == SIG_ERR) {
-                    print_error("(parent) signal(SIGQUIT, handles_stop_signal): %s", strerror(errno));
+                if (signal(SIGQUIT, handle_stop_signal) == SIG_ERR) {
+                    print_error("(parent) signal(SIGQUIT, handle_stop_signal): %s", strerror(errno));
                 }
 
-                if (signal(SIGINT, handles_stop_signal) == SIG_ERR) {
-                    print_error("(parent) signal(SIGINT, handles_stop_signal): %s", strerror(errno));
+                if (signal(SIGINT, handle_stop_signal) == SIG_ERR) {
+                    print_error("(parent) signal(SIGINT, handle_stop_signal): %s", strerror(errno));
                 }
 
                 if (manual_logrotate && signal(SIGHUP, handles_logrotate) == SIG_ERR) {
