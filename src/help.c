@@ -133,6 +133,7 @@
         "           --chroot=PATH               Call chroot with PATH before running the service (and before calling chdir, if given). Unless --chdir is also given the service binary path is relative to this PATH, even without \"./\" prefix.\n" \
         "           --restart-sleep=SECONDS     Wait SECONDS before restarting service. default: 1\n"                           \
         "           --crash-report=COMMAND\n"                                                                                   \
+        "       -f, --foreground                Don't daemonize, but keep running in foreground.\n"                             \
         "\n"                                                                                                                    \
         "             Run `COMMAND NAME CODE STATUS LOGFILE` if the service crashed.\n"                                         \
         "             CODE values:\n"                                                                                           \

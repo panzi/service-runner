@@ -227,6 +227,7 @@ enum {
     OPT_START_RESTART,
     OPT_START_CRASH_REPORT,
     OPT_START_RESTART_SLEEP,
+    OPT_START_FOREGROUND,
     OPT_START_COUNT,
 };
 
@@ -246,6 +247,7 @@ static const struct option start_options[] = {
     [OPT_START_RESTART]          = { "restart",          required_argument, 0,  0  },
     [OPT_START_CRASH_REPORT]     = { "crash-report",     required_argument, 0,  0  },
     [OPT_START_RESTART_SLEEP]    = { "restart-sleep",    required_argument, 0,  0  },
+    [OPT_START_FOREGROUND]       = { "foreground",       no_argument,       0, 'f' },
     [OPT_START_COUNT]            = { 0, 0, 0, 0 },
 };
 
@@ -1323,6 +1325,7 @@ int command_start(int argc, char *argv[]) {
     bool cleanup_pidfiles = false;
     bool rlimit_fsize = false;
     bool manual_logrotate = false;
+    bool foreground = false;
 
     char *pidfile_runner = NULL;
     char logfile_path_buf[PATH_MAX];
@@ -1513,6 +1516,10 @@ int command_start(int argc, char *argv[]) {
                 }
 
                 chdir_path = optarg;
+                break;
+
+            case 'f':
+                foreground = true;
                 break;
 
             case '?':
@@ -1858,14 +1865,16 @@ int command_start(int argc, char *argv[]) {
         goto cleanup;
     }
 
-    const pid_t pid = fork();
-    if (pid < 0) {
-        fprintf(stderr, "*** error: fork for deamonize failed: %s\n", strerror(errno));
-        status = 1;
-        goto cleanup;
-    } else if (pid != 0) {
-        // parent: shell command quitting
-        goto cleanup;
+    if (!foreground) {
+        const pid_t pid = fork();
+        if (pid < 0) {
+            fprintf(stderr, "*** error: fork for deamonize failed: %s\n", strerror(errno));
+            status = 1;
+            goto cleanup;
+        } else if (pid != 0) {
+            // parent: shell command quitting
+            goto cleanup;
+        }
     }
 
     // child: service-runner process

@@ -152,6 +152,8 @@ COMMANDS:
            --restart-sleep=SECONDS     Wait SECONDS before restarting service. 
                                        default: 1
            --crash-report=COMMAND
+       -f, --foreground                Don't daemonize, but keep running in 
+                                       foreground.
 
              Run `COMMAND NAME CODE STATUS LOGFILE` if the service crashed.
              CODE values:
