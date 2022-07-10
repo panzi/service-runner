@@ -40,7 +40,7 @@
 
 #define PIPE_READ  0
 #define PIPE_WRITE 1
-#define SPLICE_SZIE ((size_t)2 * 1024 * 1024 * 1024)
+#define SPLICE_SIZE ((size_t)2 * 1024 * 1024 * 1024)
 
 #define LOG_LEVEL_UPPER_INFO_STR  "INFO"
 #define LOG_LEVEL_UPPER_ERROR_STR "ERROR"
@@ -2301,7 +2301,7 @@ int command_start(int argc, char *argv[]) {
 
                         if (has_logdata) {
                             // handle log messages
-                            const ssize_t count = splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK);
+                            const ssize_t count = splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SIZE, SPLICE_F_NONBLOCK);
                             if (count < 0 && errno != EINTR) {
                                 if (errno == EINVAL) {
                                     // The docker volume filesystem doesn't support splice()
@@ -2332,7 +2332,7 @@ int command_start(int argc, char *argv[]) {
                                         }
                                     }
                                 } else {
-                                    print_error("(parent) splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SZIE, SPLICE_F_NONBLOCK): %s",
+                                    print_error("(parent) splice(pipefd[PIPE_READ], NULL, logfile_fd, NULL, SPLICE_SIZE, SPLICE_F_NONBLOCK): %s",
                                         strerror(errno));
                                 }
                             }
